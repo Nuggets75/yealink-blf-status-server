@@ -154,7 +154,11 @@ def db_init():
         db.execute('PRAGMA journal_mode=WAL')
         if not db.execute("SELECT 1 FROM settings WHERE key='admin_hash'").fetchone():
             db.execute('INSERT INTO settings VALUES (?,?)', ('admin_hash', pw_hash(admin_pw)))
-        if not db.execute('SELECT 1 FROM tenants').fetchone():
+        # One-time migration sentinel. Without it, deleting the last customer
+        # would recreate the old test tenant on the next restart if legacy
+        # SIP_PASSWORD/API_TOKEN environment variables were still set.
+        legacy_done = db.execute("SELECT value FROM settings WHERE key='legacy_import_processed'").fetchone()
+        if not legacy_done and not db.execute('SELECT 1 FROM tenants').fetchone():
             legacy_sip = os.getenv('SIP_PASSWORD', '')
             legacy_api = os.getenv('API_TOKEN', '')
             if legacy_sip and legacy_api:
@@ -168,6 +172,8 @@ def db_init():
                 db.execute('INSERT INTO api_keys(tenant_id,token_hash,token_ciphertext) VALUES(?,?,?)',
                            (tenant_id, sha(legacy_api), encrypt_api_key(legacy_api)))
                 log.info('Bisheriges status01 SIP-Konto als Testanlage übernommen')
+        if not legacy_done:
+            db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES('legacy_import_processed','1')")
         # Previous test installations may still have the legacy API_TOKEN in Dockhand.
         # Recover only this *known* secret; arbitrary SHA-256 hashes are not reversible.
         legacy_api = os.getenv('API_TOKEN', '')
@@ -298,7 +304,17 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
         out += '<p class="muted">Bestehender Schlüssel nur als Hash gespeichert: nicht wiederherstellbar. Zum Anzeigen bitte einmalig einen neuen Schlüssel erzeugen.</p>'
     out += f'<p><form method="post" action="/admin/tenants/{tid}/rotate">{csrf}<button class="secondary">API-Schlüssel neu erzeugen</button></form></p><p class="muted"><small>Achtung: Der alte Schlüssel wird dabei sofort ungültig.</small></p></section>'
 
-    out += f'<section class="card"><h2>Administration</h2><form method="post" action="/admin/tenants/{tid}/active">{csrf}<button class="{ "warn" if tenant["active"] else "secondary" }">{ "Kunde deaktivieren" if tenant["active"] else "Kunde aktivieren" }</button></form><p class="sub">Deaktivierung sperrt API-Zugriff und entfernt SIP-Konten aus der aktiven Konfiguration.</p></section></div>'
+    out += f'<section class="card"><h2>Administration</h2><form method="post" action="/admin/tenants/{tid}/active">{csrf}<button class="{ "warn" if tenant["active"] else "secondary" }">{ "Kunde deaktivieren" if tenant["active"] else "Kunde aktivieren" }</button></form><p class="sub">Deaktivierung sperrt API-Zugriff und entfernt SIP-Konten aus der aktiven Konfiguration.</p>'
+    out += (f'<details style="margin-top:18px"><summary>Kunde dauerhaft löschen</summary>'
+            f'<p class="sub"><strong>Unwiderruflich:</strong> {len(phones)} Telefon(e), {len(stat)} Statuswert(e), alle API-Schlüssel und zugehörige Ereignisse werden entfernt. '
+            'Nach dem Löschen funktionieren bisherige CFD-Schlüssel und SIP-Konten nicht mehr. Bestehende Telefonvorlagen müssen bei 3CX separat entfernt werden.</p>'
+            f'<form method="post" action="/admin/tenants/{tid}/delete">{csrf}'
+            f'<label>Zur Bestätigung die Kundenkennung <code>{e(tenant["slug"])}</code> eingeben</label>'
+            '<input name="confirm" required autocomplete="off" spellcheck="false">'
+            '<label>Admin-Passwort erneut eingeben</label>'
+            '<input type="password" name="password" autocomplete="current-password" required>'
+            '<p><button class="warn" type="submit">Kunde und alle Daten unwiderruflich löschen</button></p>'
+            '</form></details></section></div>')
     out += '<section class="card"><h2>Statusanzeigen</h2><table><tr><th>Name</th><th>BLF-Nummer</th><th>Zustand</th><th>Aktion</th></tr>'
     for s in stat:
         if s['value']:
@@ -557,11 +573,43 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.error(503,'Kunde gespeichert, Asterisk Reload fehlgeschlagen. Bitte Logs kontrollieren.');return
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
                 self.output(200,tenant_panel(db,t,session,token,'Kunde angelegt.'));return
-            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|reveal|active|phone|status|set)',path)
+            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|reveal|active|phone|status|set|delete)',path)
             if m:
                 tid=int(m.group(1)); action=m.group(2)
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
                 if not t: self.error(404,'Kunde nicht vorhanden');return
+                if action=='delete':
+                    # Deliberately require CSRF (admin_form), exact tenant slug,
+                    # and password reauthentication before destructive deletion.
+                    if not hmac.compare_digest(f.get('confirm',''), t['slug']):
+                        self.error(400,'Zur Löschbestätigung die Kundenkennung exakt eingeben.');return
+                    ip = self.client_address[0]
+                    now = time.monotonic()
+                    recent = [x for x in REVEAL_FAILURES.get(ip, []) if x > now - 900]
+                    if len(recent) >= 5:
+                        self.error(429,'Zu viele fehlgeschlagene Passwortprüfungen.');return
+                    stored = db.execute("SELECT value FROM settings WHERE key='admin_hash'").fetchone()['value']
+                    if not pw_verify(f.get('password',''), stored):
+                        recent.append(now)
+                        REVEAL_FAILURES[ip] = recent
+                        self.error(403,'Admin-Passwort ist falsch');return
+                    REVEAL_FAILURES.pop(ip,None)
+                    # Use a single transaction and FK checks; no orphan rows.
+                    nphones = db.execute('SELECT COUNT(*) FROM phones WHERE tenant_id=?',(tid,)).fetchone()[0]
+                    nstatuses = db.execute('SELECT COUNT(*) FROM status_items WHERE tenant_id=?',(tid,)).fetchone()[0]
+                    db.execute('DELETE FROM api_keys WHERE tenant_id=?',(tid,))
+                    db.execute('DELETE FROM phones WHERE tenant_id=?',(tid,))
+                    db.execute('DELETE FROM status_items WHERE tenant_id=?',(tid,))
+                    db.execute('DELETE FROM audit WHERE tenant_id=?',(tid,))
+                    db.execute('DELETE FROM tenants WHERE id=?',(tid,))
+                    # Retain a minimal action trace without names, MACs or secrets.
+                    db.execute('INSERT INTO audit(ts,tenant_id,actor,action,detail) VALUES(?,?,?,?,?)',
+                               (int(time.time()),None,'admin','tenant_delete',
+                                f'tenant_id={tid} phones={nphones} statuses={nstatuses}'))
+                    db.commit()
+                    if not reload_asterisk():
+                        self.error(503,'Kunde gelöscht, aber Asterisk-Reload fehlgeschlagen. Bitte Logs kontrollieren und Stack neu starten.');return
+                    self.redirect('/admin');return
                 if action=='rotate':
                     token=fresh_key()
                     db.execute('UPDATE api_keys SET token_hash=?,token_ciphertext=? WHERE tenant_id=?',

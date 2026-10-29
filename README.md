@@ -268,3 +268,24 @@ Neuprovisionierung bzw. ein Werksreset nötig sein.
 in Nginx durch VPN oder IP-Allowlist eingeschränkt werden. Die Möglichkeit,
 API-Schlüssel wieder anzuzeigen, ist bewusst nur für authentifizierte
 Administratoren nach erneuter Passwortprüfung implementiert.
+
+
+## Version 1.3 – Kunden dauerhaft löschen
+
+Unter **Kunde → Administration → Kunde dauerhaft löschen** kann eine komplette
+Kundenanlage gelöscht werden. Die Schaltfläche erfordert die exakte Kundenkennung,
+das aktuelle Admin-Passwort sowie den üblichen CSRF-Schutz. Entfernt werden
+alle API-Schlüssel, Statuswerte, Telefone/SIP-Konten und kundenbezogenen
+Anwendungs-Auditeinträge. Ein minimaler Löschvorgang ohne Kundennamen verbleibt
+im Audit-Log. Alte API-Schlüssel sind danach ungültig, SIP-Konten werden aus der
+generierten Asterisk-Konfiguration entfernt und Asterisk wird neu geladen.
+
+**Vor dem Löschen:** Volume-Backup erstellen, CFD-Zugänge entfernen und sicherstellen,
+dass der Kunde wirklich gelöscht werden soll. Bestehende 3CX-Custom-Templates
+und bereits provisionierte Telefonkonfigurationen werden **nicht** automatisch
+auf entfernten 3CX-Anlagen geändert – der BLF-Server verbindet sich nie zu 3CX.
+Backups und externe Logs bleiben unabhängig von der Datenbanklöschung erhalten.
+
+Eine zusätzliche Migrationssperre verhindert, dass beim Löschen des letzten
+Kunden die frühere Testanlage nach einem Container-Neustart durch noch gesetzte
+`SIP_PASSWORD` / `API_TOKEN` Variablen automatisch erneut angelegt wird.

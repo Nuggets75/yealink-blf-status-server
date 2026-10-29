@@ -227,4 +227,68 @@ class BLFTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'Backup'):
             blf.db_init()
 
+    def test_tenant_delete_requires_confirmation_and_reauthentication(self):
+        self.login()
+        status, page, _ = self.call('GET','/admin/tenants/1')
+        self.assertEqual(status,200)
+        self.assertIn('Kunde dauerhaft löschen', page)
+        url='/admin/tenants/1/delete'
+        secret=os.environ['ADMIN_PASSWORD']
+        self.assertEqual(self.form(url,{'confirm':'testanlage','password':'wrong'})[0],403)
+        self.assertEqual(self.form(url,{'confirm':'wrong','password':secret})[0],400)
+        from urllib.parse import urlencode
+        self.assertEqual(self.call('POST',url,urlencode({'confirm':'testanlage','password':secret}),{'Content-Type':'application/x-www-form-urlencoded'})[0],403)
+        with blf.conn() as db:
+            self.assertIsNotNone(db.execute('SELECT 1 FROM tenants WHERE id=1').fetchone())
+            self.assertIsNotNone(db.execute('SELECT 1 FROM api_keys WHERE tenant_id=1').fetchone())
+        self.cookie=None
+        self.assertEqual(self.call('POST',url,'csrf=dummy&confirm=testanlage&password=x',{'Content-Type':'application/x-www-form-urlencoded'})[0],303)
+
+    def test_tenant_delete_removes_all_resources_and_retains_other_tenants(self):
+        self.login()
+        status,body,_=self.form('/admin/tenants',{'name':'Other customer','slug':'other-customer'})
+        self.assertEqual(status,200)
+        other_key=re.search('class="secret">(blf_[^<]+)</div>',body).group(1)
+        other_tid=int(re.search(r'Kennung: other-customer · ID: (\d+)',body).group(1))
+        status,_,headers=self.form('/admin/tenants/1/phone',{'label':'Delete me'})
+        self.assertEqual(status,303)
+        pid=int(re.search(r'/admin/phones/(\d+)/settings',headers['Location']).group(1))
+        with blf.conn() as db:
+            p=db.execute('SELECT sip_user FROM phones WHERE id=?',(pid,)).fetchone()
+            user=p['sip_user']
+        self.assertIn(user,blf.PJSIP_PATH.read_text())
+        self.assertEqual(self.api(os.environ['API_TOKEN'],1)[0],200)
+        status,body,headers=self.form('/admin/tenants/1/delete',{'confirm':'testanlage','password':os.environ['ADMIN_PASSWORD']})
+        self.assertEqual(status,303)
+        self.assertEqual(headers['Location'],'/admin')
+        with blf.conn() as db:
+            self.assertIsNone(db.execute('SELECT 1 FROM tenants WHERE id=1').fetchone())
+            for table in ('phones','status_items','api_keys','audit'):
+                self.assertEqual(db.execute(f'SELECT count(*) FROM {table} WHERE tenant_id=1').fetchone()[0],0)
+            self.assertIsNotNone(db.execute('SELECT 1 FROM tenants WHERE id=?',(other_tid,)).fetchone())
+            event=db.execute("SELECT tenant_id,detail FROM audit WHERE action='tenant_delete'").fetchone()
+            self.assertIsNone(event['tenant_id'])
+            self.assertNotIn('testanlage',event['detail'])
+        self.assertEqual(self.api(os.environ['API_TOKEN'],0)[0],401)
+        self.assertEqual(self.api(other_key,1)[0],200)
+        self.assertNotIn(user,blf.PJSIP_PATH.read_text())
+        self.assertNotIn('[blf_t1]',blf.EXT_PATH.read_text())
+        self.assertIn(f'[blf_t{other_tid}]',blf.EXT_PATH.read_text())
+        self.assertEqual(self.call('GET','/admin/tenants/1')[0],404)
+        self.assertEqual(self.call('GET',f'/admin/phones/{pid}/settings')[0],404)
+
+    def test_last_tenant_delete_does_not_reimport_legacy_credentials_on_restart(self):
+        self.login()
+        url='/admin/tenants/1/delete'
+        self.assertEqual(self.form(url,{'confirm':'testanlage','password':os.environ['ADMIN_PASSWORD']})[0],303)
+        with blf.conn() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM tenants').fetchone()[0],0)
+            self.assertEqual(db.execute("SELECT value FROM settings WHERE key='legacy_import_processed'").fetchone()[0],'1')
+        blf.db_init()
+        blf.generate_configs()
+        with blf.conn() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM tenants').fetchone()[0],0)
+            self.assertEqual(db.execute('SELECT count(*) FROM phones').fetchone()[0],0)
+        self.assertEqual(self.api(os.environ['API_TOKEN'],1)[0],401)
+
 if __name__=='__main__': unittest.main()
