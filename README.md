@@ -1,173 +1,180 @@
-# Yealink BLF-Statusserver: Asterisk + Dockhand (Proof of Concept)
+# Yealink BLF Control Center – zentraler Multi-Tenant-Statusserver
 
-Ein Git-faehiger Docker-Testaufbau fuer **ein Yealink T46S/T54W** mit bereits vorhandenem **3CX-STUN-Account**. Asterisk stellt eine eigene SIP-Registrierung (`status01`, Account 2 am Telefon) und einen BLF-Hint (`9001`) bereit. Die vorhandene 3CX-Telefonie auf Account 1 wird nicht bewusst umkonfiguriert.
+Version: **1.0 Test-/Pilotversion** · ein Asterisk mit PJSIP, Python-API und browserbasierter Kundenverwaltung · keine Verbindung *vom Server zur 3CX*.
 
-**Status:** Testvorlage nach Dokumentation; nicht auf einer konkreten Yealink-Firmware / in deinem Dockhand getestet. Keine produktionsreife zentrale Multi-Mandanten-Plattform, keine CFD-API und kein SIP/TLS. Erst die erfolgreiche Registrierung und BLF-Funktion nachweisen.
-
-## Dateien
+## Funktionsprinzip
 
 ```text
-.
-├── docker-compose.yml
-├── docker-compose.remote.yml
-├── Dockerfile
-├── config/
-│   ├── extensions.conf
-│   └── modules.conf
-├── scripts/
-│   └── entrypoint.sh
-├── .env.example
-├── .gitignore
-└── .dockerignore
+3CX CFD (Kunde A)  --HTTPS POST mit Kunden-API-Schlüssel-->  Nginx Proxy Manager:443
+                                                             |
+                                                             v
+                                               BLF Control Center:8787/TCP
+                                                 SQLite + Asterisk CLI
+                                                             |
+                                                             v
+Yealink Telefon (Kunde A): SIP REGISTER/SUBSCRIBE -> Asterisk:5062/UDP -> SIP NOTIFY -> LED
 ```
 
-Die `pjsip.conf` wird **erst beim Containerstart** aus den Dockhand-Umgebungsvariablen erzeugt. So gelangt kein echtes SIP-Passwort ins Git-Repository. Die Konfigurationen werden ins Docker-Image kopiert: Es gibt keine relativen Bind-Mounts, die beim Dockhand-Git-Deployment Probleme bereiten koennten.
+- Ein zentraler Container für viele Kunden/Anlagen; keine 3CX-Trunks, keine Polling-Verbindung des Statusservers zu Kunden-PBXen.
+- Getrennte SIP-Accounts pro **Telefon**, eigene Asterisk-Kontexte und Statuswerte pro **Kunde**. BLF-Nebenstelle `9001` darf bei jedem Kunden dieselbe Nummer sein.
+- Eigener API-Schlüssel pro Kunde, der **den Kunden bestimmt**; ein Client kann nicht durch Manipulation von Kunden-IDs andere Anlagen steuern.
+- Admin-Weboberfläche unter `/admin` mit Login, Kunden, Telefonen, Statuswerten, API-Key-Rotation und manueller Statusprüfung.
+- Sichere, kundenspezifische 3CX-Custom-Template-Downloads (enthalten SIP-Passwörter). Standardmäßig wird **Taste 1** (für T46S/T54W sowie Modelle in derselben 3CX-Tastengruppe) die Status-BLF `9001` auf SIP-Account 2. **Taste 2 und alle weiteren bleiben weiterhin gemäß 3CX konfigurierbar.**
+- Die Callflow-Nummern (etwa 951) bleiben ausschließlich auf der 3CX-Seite. Der Statusserver ruft **keine** 3CX an.
 
-## WICHTIG: Zwei Dockhand-Betriebsarten
+### Hinweis zur Tastenkonfiguration
 
-Das Repository enthaelt **zwei** Compose-Dateien fuer unterschiedliche Dockhand-Setups:
+Taste 1 zeigt nur den Zustand der Spontanschaltung an. Sie ist eine **normale BLF** von Asterisk, kein Callflow-Schalter. Beim Drücken versucht das Telefon in der Regel, `9001` über Account 2 zu wählen; auf Asterisk wird ein solcher Anruf verworfen. Ein-/Ausschalten erfolgt über regulär von 3CX eingerichtete Speed-Dial-/CFD-Tasten oder andere bestehende Wege. Es werden **keine Callflow-Tasten** in der Vorlage hartkodiert.
 
-1. **`docker-compose.remote.yml`**: Fuer einen **normalen/manuellen Dockhand-Stack**, bei dem du die Compose-Datei im Editor einfuegst, ohne Git-Stack-Funktion. Vorher `DEIN-USERNAME` in der GitHub-URL ersetzen; Repository muss ohne zusaetzliche Git-Zugangsdaten abrufbar sein (normalerweise **oeffentlich**). Im Dockhand-Editor den Inhalt von `docker-compose.remote.yml` einfuegen. Docker holt bei jedem Build den Kontext mit `Dockerfile`, `config/` und `scripts/` aus GitHub. Du musst diese Dateien **nicht manuell auf dem Host ablegen**. `pull_policy: build` weist Compose zum Image-Build an, soweit die verwendete Compose-Version dies unterstuetzt.
-2. **`docker-compose.yml`**: Fuer einen **richtigen Dockhand-Git-Stack**, bei dem Dockhand das Repository mit Git-Zugangsdaten auscheckt. Hier ist `build.context: .` richtig, und Docker findet das `Dockerfile` innerhalb des ausgecheckten Repositorys. Git-Stacks koennen auch private Repositories nutzen, wenn Dockhand Zugriff hat. `Build images on deploy` einschalten.
+Die physische Taste 1 ist damit **nicht mehr über BLF-Feld 1 der 3CX konfigurierbar**. Die 3CX-Felder ab 2 bleiben unverändert und belegen die physischen Tasten 2 ff. Für Anlagen mit weiteren Status-BLFs (z. B. 9002/9003) legt die Admin-Oberfläche die Statusressourcen an; die zusätzliche Zuweisung auf freie Yealink-Tasten ist in dieser Version noch manuell bzw. als kundenspezifische Erweiterung der Vorlage vorzunehmen.
 
-**Nicht verwechseln:** `build.context: .` funktioniert nicht im manuellen Dockhand-Editor, wenn neben der von Dockhand verwalteten Compose-Datei keine `Dockerfile` liegt. Umgekehrt muss bei der Remote-Datei der GitHub-Nutzername angepasst werden. Beide Varianten benoetigen `SIP_PASSWORD` als Umgebungsvariable/Secret in Dockhand.
+## Upgrade vom bisherigen `blf-asterisk`-Testcontainer
 
-Die Dateien bleiben bei beiden Varianten in GitHub; Git/Docker holen sie fuer den Build automatisch herunter. Es sind keine manuellen Host-Dateikopien notwendig.
+**Vorher: Backup des bestehenden Docker-Volumes `asterisk-state` erstellen.** Die neue Version verwendet **dasselbe** Volume und denselben Container-Namen. Bitte **keine zweite Instanz** parallel auf Port 5062 starten.
 
-## Voraussetzungen
+1. Die vollständigen Dateien dieses ZIP ins Root-Verzeichnis des bisherigen GitHub-Repositories `yealink-blf-status-server` hochladen. Keine `.env`-Datei mit Geheimnissen committen.
+2. Dockhand: Bei einem **manuell angelegten Stack mit GitHub-Remote-Build** den Inhalt von `docker-compose.remote.yml` übernehmen und `DEIN-USERNAME` in der GitHub-URL ersetzen. Ein *privates* GitHub-Repository braucht Git-Authentifizierung bzw. einen Dockhand Git-Stack mit `docker-compose.yml` (`build.context: .`).
+3. Die **bestehenden Variablen** `SIP_PASSWORD` und `API_TOKEN` für die einmalige Übernahme des bisherigen `status01`-Testkontos **beibehalten**. Ergänzen:
 
-- Linux-Docker-Host (fuer `network_mode: host`), auf dem UDP **5062** frei ist.
-- Eine von aussen erreichbare IPv4 oder eine funktionierende Portweiterleitung UDP 5062 an den Docker-Host (kein CGNAT ohne Vermittlung).
-- Dockhand mit eingerichtetem Git-Repository (GitHub), Berechtigung zum Build lokaler Images.
-- Ein Testtelefon, fuer das du die zweite SIP-Registrierung manuell konfigurieren kannst.
-- Externe Erreichbarkeit **nur fuer die oeffentliche WAN-IP des Teststandorts** auf UDP 5062 erlauben, soweit moeglich.
+   ```env
+   ADMIN_PASSWORD=<starkes-einmaliges-Passwort-mindestens-20-Zeichen>
+   SIP_HOST=blf.deine-domain.de
+   API_BIND_IP=192.168.178.100
+   API_PORT=8787
+   SIP_PORT=5062
+   ```
 
-**Achtung:** Das hier ist ein SIP-Testdienst, kein Reverse-Proxy-faeiger HTTP-Dienst. Docker-Host-Networking bedeutet: `ports:` nicht angeben; die Host-Firewall ist fuer den Schutz des Dienstes verantwortlich.
+   `API_BIND_IP` ist die **private Docker-Host-IP**, auf der Nginx Proxy Manager zugreifen kann. Sitzt Nginx auf demselben Host *außerhalb* von Docker, kann `127.0.0.1` verwendet werden. `0.0.0.0` ist aus Sicherheitsgründen absichtlich nicht erlaubt.
 
-## GitHub und Dockhand (Git-Stack-Variante)
+4. Falls der Docker-Host **direkt** eine öffentliche IPv4 besitzt, `SIP_PUBLIC_IP` und `SIP_LOCAL_NET` leer lassen. Hinter NAT diese Parameter passend konfigurieren (SIP_PUBLIC_IP akzeptiert gegenwärtig nur IPv4). FQDN des Servers ist für Telefone `SIP_HOST`; ein HTTP-Nginx-Proxy kann **kein SIP/UDP** weiterleiten.
+5. In Dockhand: **Image neu bauen und Stack neu erstellen/deployen**. Neue Version übernimmt bei **erster Datenbankinitialisierung** `status01`, `SIP_PASSWORD`, `API_TOKEN` als Kunden `testanlage`, BLF-Nummer 9001. Ein erneutes Provisionieren/Registrieren des Testtelefons kann nach dem Upgrade erforderlich sein. Der vorübergehend sichtbare SIP-Status kann sich ändern, da sich der Asterisk-Hint-Kontext geändert hat.
+6. Der Initialwert für die übernommene Testanlage ist AUS (`0`); gewünschten Istwert nach dem Update über das Admin-Webinterface oder den bisherigen API-Schlüssel erneut melden. Wenn die neue DB existiert, werden `SIP_PASSWORD`/`API_TOKEN` nicht erneut importiert oder zurückgesetzt.
+7. Logs, SIP-Registrierung und Hint prüfen:
 
-1. Neues GitHub-Repository anlegen, zum Beispiel `yealink-blf-asterisk-lab` (bevorzugt privat).
-2. Den **Inhalt dieses Ordners** in das Wurzelverzeichnis des Repositories hochladen, mit den Unterordnern `config/` und `scripts/`. Keine echten Passwoerter committen.
-3. In Dockhand unter **Settings -> Git** das Repository einrichten.
-4. **Git-Stack** erstellen: Repository und Branch auswaehlen, Compose-Datei **`docker-compose.yml`** (im Repository-Root).
-5. **Build images on deploy aktivieren**. Das ist notwendig, weil die Compose-Datei eine `build:`-Anweisung fuer unser eigenes Dockerfile enthaelt. Ohne diese Option kann das lokale Image auf einem neuen Host fehlen.
-6. In Dockhand die Variable **`SIP_PASSWORD` als Secret** eintragen (mindestens 20 Zeichen, nur Buchstaben, Zahlen, `.`, `_`, `~`, `-`). Zum Generieren z. B.: `openssl rand -hex 24`.
-7. Optional normale Stack-Variablen setzen: `SIP_PORT=5062`, `SIP_PUBLIC_IP=...` und `SIP_LOCAL_NET=...` (siehe unten).
-8. Git-Stack deployen und die Logs des Containers `blf-asterisk` pruefen.
+   ```bash
+   asterisk -rx "pjsip show contacts"
+   asterisk -rx "core show hints"
+   asterisk -rx "pjsip show subscriptions inbound"
+   ```
 
-Dockhand-Doku: https://dockhand.pro/manual/ (Abschnitte "Git integration", "Build images on deploy", "Secrets").
+   Diese Befehle **direkt** in der Dockhand-Shell des Containers eingeben (nicht `docker exec` innerhalb des Containers).
 
-### Host direkt mit oeffentlicher IPv4
+### Persistenz
 
-- `SIP_PORT=5062`
-- `SIP_PUBLIC_IP` **leer** lassen.
-- `SIP_LOCAL_NET` **leer** lassen.
-- UDP 5062 in der Host-Firewall fuer den Teststandort freischalten.
+Datenbank und generierte Asterisk-Konfiguration liegen im persistenten Docker-Volume unter `/var/lib/asterisk/blf`. Keine SIP-/API-Secrets in Docker-Images, GitHub oder Logs ablegen. Der Admin-Login verwendet ein PBKDF2-gehashtes Passwort, API-Schlüssel liegen ausschließlich als SHA-256-Hash vor. SIP-Passwörter werden zum Generieren der PJSIP-Konfiguration **im geschützten lokalen Datenbank-Volume im Klartext** benötigt; schützt dieses Volume samt Backups entsprechend. Die Admin-Passwort-Umgebungsvariable wird nur bei der **Ersteinrichtung** für die Datenbank verwendet; danach ist ein Passwortwechsel über `/admin/password` möglich.
 
-### Host hinter Router/NAT
+## Nginx Proxy Manager: HTTPS
 
-- Router: UDP **5062** an die lokale IP des Docker-Hosts weiterleiten.
-- `SIP_PUBLIC_IP` auf die **oeffentliche IPv4 des Routers** setzen.
-- `SIP_LOCAL_NET` bei Bedarf auf das lokale Server-Netz setzen, z. B. `192.168.178.0/24`.
-- Externer Port und interner Port sollten fuer diesen Test beide 5062 sein.
-- Bei CGNAT ohne eingehende IPv4-Portweiterleitung funktioniert dieser direkte Aufbau nicht.
+Die normale HTTP/HTTPS-Weiterleitung ist **nur für die Verwaltungs-/CFD-API** geeignet, nicht für SIP.
 
-Hinweis: Das ist eine erste NAT-Variante. Bei speziellen NAT-/Firewall-Setups kann SIP-Feintuning erforderlich sein.
+| Option | Einstellung |
+|---|---|
+| Domain Names | `blf-api.deine-domain.de` |
+| Scheme | `http` |
+| Forward Hostname/IP | Private Docker-Host-IP aus `API_BIND_IP` |
+| Forward Port | `8787` |
+| SSL | Öffentlich gültiges Zertifikat, Force SSL einschalten |
+| Router | Eingehend HTTPS 443 zu Nginx; **kein** öffentlicher TCP-Port 8787 |
+| Firewall | TCP 8787 ausschließlich aus Richtung Nginx erlauben |
+| SIP | Weiterhin UDP 5062 direkt an Asterisk-Docker-Host |
 
-## Yealink einrichten (zuerst manuell, nicht im 3CX-Template)
+Sicherheitsmaßnahmen: Admin-Zugriff auf `/admin` über Nginx nach Möglichkeit zusätzlich auf Verwaltungs-IP/VPN beschränken. Asterisk-SIP nur für benötigte Standorte zulassen, soweit sinnvoll. Bei 100 dynamischen Kunden-IP-Adressen langfristig SIP/TLS, Monitoring und Fail2ban/Firewall-Konzept prüfen. HTTPS-Zertifikat auf Nginx aktualisieren, Proxy und Container patchen. Für Dauerbetrieb die Netzwerkschnittstellen und Administration weiter härten.
 
-1. Die bestehende 3CX-Registrierung auf **Account 1** nicht anfassen.
-2. Im Webinterface unter **Account -> Register** den **Account 2** aktivieren:
+## Webinterface: Kunden hinzufügen
 
-| Feld | Wert |
-| --- | --- |
-| Line Active | Enabled |
-| Label | BLF Test |
-| Register Name / User Name | `status01` |
-| Password | Das `SIP_PASSWORD` aus Dockhand |
-| SIP Server | Oeffentliche IPv4 oder DNS-Name des Docker-Hosts |
-| SIP Port | `5062` (oder `SIP_PORT`) |
-| Transport | UDP |
+1. `https://blf-api.deine-domain.de/admin` öffnen. Beim ersten Start mit `ADMIN_PASSWORD` anmelden.
+2. **Neuen Kunden anlegen** (`name`, eindeutige `slug`-Kennung). Standardstatus `spontanschaltung` mit BLF-Nummer `9001` wird automatisch eingerichtet.
+3. Den angezeigten **API-Schlüssel sofort kopieren**. Er ist nur einmal sichtbar. Über den Knopf **API-Schlüssel neu erzeugen** kann er ersetzt werden; alter Schlüssel verliert dann sofort seine Gültigkeit.
+4. Ein **Telefon hinzufügen**, Bezeichnung eingeben. Das neue SIP-Konto wird serverseitig erzeugt und Asterisk neu geladen.
+5. Unter dem Telefon **SIP-Daten** einsehen; dort auch die **kundenspezifische 3CX-XML-Vorlage** herunterladen.
+6. Kunden bei Bedarf deaktivieren, zusätzliche Statusressourcen (z. B. `notbetrieb`, BLF `9002`) hinzufügen und aktuelle Zustände im Webinterface überprüfen.
 
-3. Unter **DSSKey / Line Key** eine freie Taste konfigurieren (z. B. Taste 5):
+**Wichtig:** Der Template-Download ist personalisiert und enthält das SIP-Passwort für Account 2. **Nicht auf öffentliches GitHub hochladen**, nicht unverschlüsselt versenden.
 
-| Feld | Wert |
-| --- | --- |
-| Type | BLF |
-| Account / Line | **2** |
-| Value | `9001` |
-| Label | `Spontanschaltung` |
+## 3CX-Vorlage für Steuerungs-Telefone
 
-Die entsprechende Yealink-Provisionierungslogik waere grundsaetzlich:
+Die beigefügte Originalvorlage `templates/source-yealinkT4x.ph.xml` stammt aus der bereitgestellten 3CX-Konfiguration. Die Admin-Oberfläche erzeugt daraus eine personalisierte Version mit:
 
-```ini
-linekey.5.type = 16
-linekey.5.line = 2
-linekey.5.value = 9001
-linekey.5.label = Spontanschaltung
+- unverändertem Account 1 (3CX)
+- einem für dieses Telefon individuellen Account 2 mit SIP-Domain aus `SIP_HOST` und Port 5062
+- **physischer Taste 1**: `linekey.1.type=16`, `linekey.1.line=2`, `linekey.1.value=9001`, Label `Spontanschaltung`
+- **Tasten 2 ff.**: unveränderte 3CX-DSS-Belegungen
+- eigenem Vorlagennamen und abgewandelten Yealink-y-Dateinamen (`y100...`) gegenüber der Standardvorlage
+
+Die Tastenerweiterung greift derzeit auf die in der hochgeladenen Vorlage zusammengefasste Modellgruppe `SIP-T44U`, `SIP-T44W`, `SIP-T46S`, `SIP-T46U`, `SIP-T54W`. Für andere Modelle wird aktuell **keine** Status-Taste reserviert – Anpassung vor dem produktiven Einsatz erforderlich.
+
+**Einbindung in 3CX:** Nach 3CX-Anleitung ein Custom Phone Template für den jeweiligen Kunden anlegen und das personalisierte XML als Basis verwenden, z. B. unter dem vorgesehenen `CustomTemplates/phones/`-Verzeichnis auf einer selbst verwalteten Installation. Bei einer per 3CX-UI erzeugten Vorlagenkopie beachten, dass Namen, Modelle und y-Dateinamen zueinander passen. Je nach 3CX-Edition/Hosting kann der Zugriff auf die Vorlagen eingeschränkt sein. Das **Ändern eines Custom Templates hebt die normale 3CX-Unterstützung für das Telefon teilweise auf**. Vor Einsatz immer `View Configuration` kontrollieren und eine gezielte Reprovisionierung **nur eines Testtelefons** durchführen. Die `y100...` Dateinamen müssen pro PBX eindeutig sein und gegebenenfalls angepasst werden, falls andere Custom Templates sie bereits verwenden.
+
+**3CX-Tests nach Reprovisionierung:** Account 1 weiterhin registriert, Account 2 registriert, Taste 1 zeigt Status-BLF, Taste 2 und folgende werden von 3CX gesetzt. Die zugehörige IP-Phone-Template-Dokumentation ist in der 3CX-Webseite beschrieben: https://www.3cx.com/docs/custom-ip-phone-templates/
+
+Die mitgelieferte Datei `templates/BEISPIEL-KEINE-ECHTEN-ZUGANGSDATEN.xml` ist **nur ein Muster mit Platzhalterwerten**; sie ist nicht direkt für eine Kundenanlage geeignet. Das richtige XML wird über `/admin` nach dem Anlegen des Telefons exportiert.
+
+## 3CX CFD: Status per HTTPS melden
+
+> 3CX → HTTPS ist die **einzige** Schnittstelle zwischen PBX und diesem Statusserver. Vom Statusserver wird **keine Anfrage zur 3CX gesendet**.
+
+### Ziel-Endpunkt
+
+```http
+POST https://blf-api.deine-domain.de/v1/status/spontanschaltung
+Content-Type: application/json
+X-API-Key: blf_<kundenspezifischer-schluessel>
+
+{"value":1}
 ```
 
-**Wichtig:** Je nach Firmware/3CX-Provisionierung kann ein Reprovisioning die manuellen Einstellungen wieder ueberschreiben. Deshalb zuerst bewusst manuell testen, erst danach das 3CX-Template anpassen. Auf einem Routerphone ist ein eigener Test erforderlich.
+- `value: 1` = **EIN / BUSY / rote BLF**
+- `value: 0` = **AUS / NOT_INUSE / grüne BLF**
+- **Kunden-ID wird nicht übertragen!** Die API identifiziert den Kunden aus dem API-Schlüssel.
+- Für andere Statusnamen z. B. `/v1/status/notbetrieb`; sie müssen vorher im Dashboard angelegt werden.
+- Die alte Route `/v1/status` steht als Alias für `spontanschaltung` bereit.
 
-## Funktionstest
+### Konfiguration im Call Flow Designer
 
-Auf dem **Docker-Host** mit Zugriff auf den Docker-Daemon:
+3CX CFD-Komponente **HTTP Request** *nachdem* der 3CX-Globale-Parameter erfolgreich geschrieben wurde:
+
+| CFD-Property | Beispiel |
+|---|---|
+| RequestType | `POST` |
+| URI (String-Expression) | `"https://blf-api.deine-domain.de/v1/status/spontanschaltung"` |
+| Content-Type | `application/json` |
+| Headers: Name | `X-API-Key` (als Header-Name ohne zusätzliche Quotes) |
+| Headers: Value (Expression) | `"blf_DEIN_KUNDEN_TOKEN"` |
+| Timeout | `5` Sekunden |
+| Content (für EIN als String-Expression) | `"{\"value\":1}"` |
+| Content (für AUS als String-Expression) | `"{\"value\":0}"` |
+
+HTTP-Request-Komponente und Properties: https://www.3cx.com/docs/manual/cfd-components/
+
+**Keine Toggle-API verwenden.** Der CFD muss den *wirklichen neuen Wert* `0` oder `1` melden, damit wiederholte Meldungen idempotent bleiben. Wenn andere Wege den 3CX-Parameter ändern, müssen diese ebenfalls die API informieren. Andernfalls wird die LED irgendwann veraltet sein. `ResponseStatusCode == 200` im CFD prüfen, Fehler protokollieren und gegebenenfalls Statusmeldung wiederholen.
+
+### Curl-Test
 
 ```bash
-docker logs -f blf-asterisk
+curl --fail-with-body -X POST 'https://blf-api.deine-domain.de/v1/status/spontanschaltung' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: blf_KUNDEN_API_TOKEN' \
+  --data '{"value":1}'
 ```
+
+Erfolgsantwort:
+
+```json
+{"ok":true,"value":1,"state":"BUSY","status":"spontanschaltung"}
+```
+
+Fehler: `401` Schlüssel ungültig, `400` ungültiger JSON-Wert, `404` Status existiert nicht, `429` mehr als 60 Änderungen/Minute/Kunde, `503` Asterisk nicht erreichbar.
+
+**HTTP 200 bedeutet:** Asterisk hat den Änderungsbefehl angenommen, *nicht* dass jeder Yealink die NOTIFY-Nachricht erhalten hat. Für größere Rollouts SIP-Watcher, Registrierung, Monitoring und Konflikte mit 3CX-NAT/STUN beobachten.
+
+## Tests, Wartung, Grenzen
+
+Lokale Logik- und HTTP-Tests ohne Docker/Asterisk:
 
 ```bash
-# Registrierung (erwartet: ein Kontakt fuer status01)
-docker exec blf-asterisk asterisk -rx 'pjsip show contacts'
-
-# Vorhandenen Hint und Watcher anzeigen
-docker exec blf-asterisk asterisk -rx 'core show hints'
-
-# Pruefen, ob die benoetigten Presence-Module geladen sind
-docker exec blf-asterisk asterisk -rx 'module show like res_pjsip_pubsub'
-docker exec blf-asterisk asterisk -rx 'module show like res_pjsip_exten_state'
-
-# Normal: frei, erwartete Anzeige gruen (modellabhaengig)
-docker exec blf-asterisk asterisk -rx 'devstate change Custom:spontan NOT_INUSE'
-
-# Spontanschaltung: besetzt, erwartete Anzeige rot (modellabhaengig)
-docker exec blf-asterisk asterisk -rx 'devstate change Custom:spontan BUSY'
-
-# Wieder Normalbetrieb
-docker exec blf-asterisk asterisk -rx 'devstate change Custom:spontan NOT_INUSE'
+python3 -m unittest discover -s tests -v
 ```
 
-Ein `BUSY`-Device-State erzeugt nicht automatisch einen 3CX-Anruf; er dient hier nur zur Ausloesung des Asterisk-BLF-Hints. Die konkreten Farben und die Zuverlaessigkeit der parallelen Registrierung muessen am realen Telefon geprueft werden.
+Das Paket hat automatisierte Testfälle für Login, CSRF, Tenant-API-Isolation, Token-Rotation, Migration und XML-Export. **Ein Docker-Build, der echte Asterisk-Prozess sowie eine 3CX-End-to-End-Provisionierung wurden in dieser Umgebung nicht getestet.** Deshalb zuerst in einer Testanlage deployen und überwachen; nicht unmittelbar an 100 Anlagen ausrollen.
 
-**Hinweis:** Der initiale Status kann beim ersten Start `UNKNOWN` sein, bis der erste `devstate change`-Befehl ausgefuehrt wird. Der Asterisk-Device-State wird normalerweise in der Asterisk-Datenbank gespeichert; `asterisk-state` ist daher als Docker-Volume persistent.
-
-## Fehlersuche
-
-Zum zeitweisen Mitschneiden der SIP-Signalisierung:
-
-```bash
-docker exec blf-asterisk asterisk -rx 'pjsip set logger on'
-# ... Registrierung / Taste / Statuswechsel testen ...
-docker exec blf-asterisk asterisk -rx 'pjsip set logger off'
-```
-
-- **Kein REGISTER / kein Kontakt:** Firewall/Portweiterleitung, SIP-Konto 2, Server-IP und Port pruefen.
-- **REGISTER mit 401:** Eine einmalige `401 Unauthorized`-Challenge ist bei SIP-Digest-Authentifizierung normal. Wiederholtes Scheitern danach: Zugangsdaten pruefen.
-- **REGISTER funktioniert, aber keine BLF:** Pruefen, ob SUBSCRIBE fuer `9001` ankommt. `core show hints` sollte einen Watcher fuer `9001@presence-test` zeigen. Bei Ablehnung: SIP-Logger und `res_pjsip_exten_state` pruefen.
-- **NOTIFY kommt, aber keine Farbe:** BLF-LED-Modus / Tastenbelegung / Yealink-Firmware untersuchen; das ist dann kein reines Server-Erreichbarkeitsproblem.
-- **Telefon nach Reprovisionierung wieder ohne Account 2:** 3CX-Template hat lokale Einstellungen ueberschrieben.
-- **Host hat bereits eigene SIP-Anlage auf 5062:** `SIP_PORT` andern und Firewall sowie Yealink identisch anpassen.
-
-Asterisk-Referenzen:
-- https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/Configuring-res_pjsip-for-Presence-Subscriptions/
-- https://docs.asterisk.org/Configuration/Channel-Drivers/SIP/Configuring-res_pjsip/Asterisk-PJSIP-Troubleshooting-Guide/
-
-## Sicherheitsgrenzen dieses Proof of Concept
-
-- **Nur Testbetrieb**, nicht ungeprueft im Internet fuer beliebige IPs exponieren.
-- SIP laeuft hier ueber **UDP ohne TLS** und mit Digest-Authentifizierung. SIP-Anmeldungen und Signalisierung sind nicht verschluesselt. Fuer den Produktivbetrieb TLS und Zugangskontrollen einplanen.
-- Auf dem Docker-Host die eingehende UDP-5062-Regel nach Moeglichkeit auf die WAN-IP des Testtelefons begrenzen. Kein RTP-Portbereich ist fuer dieses reine BLF-Szenario erforderlich.
-- `SIP_PASSWORD` als Dockhand-Secret speichern; es landet danach dennoch in den Container-Umgebungsvariablen und der generierten `pjsip.conf`. Docker-Administratoren koennen darauf zugreifen.
-- Bei einem privaten GitHub-Repo ist der Zugriff beschraenkt, aber auch dort gehoeren keine Kennwoerter hinein.
-- Es gibt **noch keine HTTPS-CFD-API**; die Statuswechsel erfolgen zunaechst manuell via `docker exec`.
+Asterisk-Prozesse nutzen auch im Leerlauf CPU für SIP-Registrierungen, Timer und Watcher. 1–2 % können bei der aktuellen Testanlage normal sein; vor Rollout Last mit ca. 100 SIP-Konten messen, auch nach stündlichen Statuswechseln. SQLite und ein einzelner Docker-Host sind für diese Größenordnung plausibel, aber noch nicht lastgetestet oder hochverfügbar. Datenbankvolumen regelmäßig sichern, Wiederherstellung üben. Langfristig empfehlen sich rollenbasierte Admin-Logins, zweite Administratoren/MFA, TLS für SIP, Audit-Anzeige, IP-Rate-Limiting am Proxy und echte HA-Tests.

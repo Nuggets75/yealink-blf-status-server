@@ -1,0 +1,113 @@
+"""End-to-end HTTP/security smoke tests without a live Asterisk process."""
+import http.client
+import importlib.util
+import os
+from pathlib import Path
+import re
+import tempfile
+import threading
+import unittest
+import xml.etree.ElementTree as ET
+
+SRC = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location('blf', SRC/'app'/'app.py')
+blf = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(blf)
+
+class BLFTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        blf.STATE_DIR = Path(self.tmp.name)/'state'
+        blf.DB_PATH = blf.STATE_DIR/'state.sqlite3'
+        blf.PJSIP_PATH = blf.STATE_DIR/'pjsip.conf'
+        blf.EXT_PATH = blf.STATE_DIR/'extensions.conf'
+        blf.SOURCE_TEMPLATE=SRC/'templates'/'source-yealinkT4x.ph.xml'
+        os.environ['ADMIN_PASSWORD'] = 'UnitTestAdminPasswordIsVeryLong123'
+        os.environ['SIP_PASSWORD'] = 'legacy_password_1234567890'
+        os.environ['API_TOKEN'] = 'legacy_api_token_12345678901234567890123456789'
+        blf.LOGIN_FAILURES.clear()
+        blf.API_ATTEMPTS.clear()
+        blf.db_init()
+        blf.generate_configs()
+        self.commands=[]
+        self.old_ast=blf.ast
+        blf.ast=lambda cmd,timeout=7: self.commands.append(cmd) or True
+        self.server=blf.Server(('127.0.0.1',0), blf.Handler)
+        self.thread=threading.Thread(target=self.server.serve_forever,daemon=True)
+        self.thread.start()
+        self.cookie=None
+        self.csrf=None
+    def tearDown(self):
+        self.server.shutdown();self.server.server_close();self.thread.join(timeout=3)
+        blf.ast=self.old_ast
+        self.tmp.cleanup()
+    def call(self,method,path,body=None,headers=None):
+        con=http.client.HTTPConnection('127.0.0.1',self.server.server_port, timeout=5)
+        h=headers.copy() if headers else {}
+        if self.cookie: h['Cookie']=self.cookie
+        con.request(method,path,body,headers=h)
+        res=con.getresponse();data=res.read().decode();hd=dict(res.getheaders());status=res.status;con.close()
+        if 'Set-Cookie' in hd:self.cookie=hd['Set-Cookie'].split(';')[0]
+        return status,data,hd
+    def login(self):
+        status,body,h=self.call('POST','/admin/login','password=UnitTestAdminPasswordIsVeryLong123',{'Content-Type':'application/x-www-form-urlencoded'})
+        self.assertEqual(status,303)
+        status,body,h=self.call('GET','/admin')
+        self.assertEqual(status,200)
+        self.csrf=re.search('name="csrf" value="([^"]+)"',body).group(1)
+        return body
+    def form(self,path,params):
+        from urllib.parse import urlencode
+        return self.call('POST',path,urlencode({'csrf':self.csrf,**params}),{'Content-Type':'application/x-www-form-urlencoded'})
+    def api(self,key,val,path='/v1/status'):
+        return self.call('POST',path,'{"value":'+str(val)+'}',{'Content-Type':'application/json','X-API-Key':key})
+    def test_legacy_import(self):
+        with blf.conn() as c:
+            self.assertEqual(c.execute('SELECT sip_user FROM phones').fetchone()[0],'status01')
+            self.assertIn('subscribe_context=blf_t1',blf.PJSIP_PATH.read_text())
+            self.assertIn('9001,hint,Custom:blf_t1_spontanschaltung',blf.EXT_PATH.read_text())
+    def test_admin_login_and_csrf(self):
+        self.assertEqual(self.call('GET','/admin')[0],303)
+        self.login()
+        self.assertEqual(self.call('POST','/admin/tenants','name=Injected&slug=injected',{'Content-Type':'application/x-www-form-urlencoded'})[0],403)
+    def test_multitenant_create_and_api_isolation(self):
+        self.login()
+        status,body,headers=self.form('/admin/tenants',{'name':'Kunde zwei','slug':'kunde-zwei'})
+        self.assertEqual(status,200)
+        key=re.search('class="secret">(blf_[^<]+)</div>',body).group(1)
+        tid=re.search(r'Kennung: kunde-zwei · ID: (\d+)',body).group(1)
+        self.assertEqual(self.api(key,1)[0],200)
+        self.assertIn(f'devstate change Custom:blf_t{tid}_spontanschaltung BUSY',self.commands)
+        self.assertEqual(self.api(key,1,'/v1/status/notbetrieb')[0],404)
+        self.assertEqual(self.api('wrong'*20,1)[0],401)
+        self.assertEqual(self.api(key,'true')[0],400)
+        self.assertEqual(self.api(os.environ['API_TOKEN'],0)[0],200)
+        self.assertIn('devstate change Custom:blf_t1_spontanschaltung NOT_INUSE',self.commands)
+    def test_export_per_customer_template(self):
+        self.login()
+        status,body,headers=self.form('/admin/tenants/1/phone',{'label':'Telefon T54W'})
+        self.assertEqual(status,303)
+        pid=re.search(r'/admin/phones/(\d+)/settings',headers['Location']).group(1)
+        status, xml, h=self.call('GET',f'/admin/phones/{pid}/template')
+        self.assertEqual(status,200)
+        ET.fromstring(xml)
+        self.assertIn('linekey.1.line = 2',xml)
+        self.assertIn('linekey.1.value = 9001',xml)
+        self.assertIn('linekey.2.value = %%type%%',xml)
+        self.assertIn('account.2.sip_server.1.address = blf.example.de',xml)
+        self.assertIn('account.2.user_name = blf_t1_p',xml)
+        self.assertIn('account.1.sip_server.1.address = %%pbx_ip%%',xml)
+        self.assertNotIn('linekey.1.value = 951',xml)
+        self.assertIn('y100000000066.cfg',xml)
+        self.cookie=None
+        self.assertEqual(self.call('GET',f'/admin/phones/{pid}/template')[0],303)
+    def test_token_rotation_revokes_old(self):
+        self.login()
+        old=os.environ['API_TOKEN']
+        status,body,_=self.form('/admin/tenants/1/rotate',{})
+        self.assertEqual(status,200)
+        new=re.search('class="secret">(blf_[^<]+)</div>',body).group(1)
+        self.assertEqual(self.api(old,1)[0],401)
+        self.assertEqual(self.api(new,1)[0],200)
+
+if __name__=='__main__': unittest.main()
