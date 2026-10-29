@@ -24,6 +24,7 @@ import tempfile
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
+from cryptography.fernet import Fernet, InvalidToken
 
 log = logging.getLogger('blf')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
@@ -40,6 +41,7 @@ SIP_LOCAL_NET = os.getenv('SIP_LOCAL_NET', '')
 SIP_HOST = os.getenv('SIP_HOST', 'blf.example.de')
 DB_LOCK = threading.RLock()
 LOGIN_FAILURES = {}
+REVEAL_FAILURES = {}
 API_ATTEMPTS = {}
 
 
@@ -81,6 +83,40 @@ def fresh_key():
     return 'blf_' + secrets.token_urlsafe(36)
 
 
+def ensure_encryption_key(db):
+    """Persistent application secret: never replace if encrypted API keys exist."""
+    key_path = STATE_DIR / '.api-key-fernet.key'
+    if not key_path.exists():
+        encrypted = db.execute('SELECT 1 FROM api_keys WHERE token_ciphertext IS NOT NULL LIMIT 1').fetchone()
+        if encrypted:
+            raise RuntimeError('API-Schluessel-Datei fehlt. Backup der .api-key-fernet.key wiederherstellen!')
+        new_key = Fernet.generate_key()
+        try:
+            descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'wb') as out:
+                out.write(new_key)
+        except FileExistsError:
+            pass
+    os.chmod(key_path, 0o600)
+    try:
+        return Fernet(key_path.read_bytes())
+    except (ValueError, TypeError) as ex:
+        raise RuntimeError('Ungueltiger API-Key-Verschluesselungsschluessel; Backup pruefen') from ex
+
+
+def encrypt_api_key(token):
+    return Fernet((STATE_DIR / '.api-key-fernet.key').read_bytes()).encrypt(token.encode('utf-8')).decode('ascii')
+
+
+def decrypt_api_key(ciphertext):
+    if not ciphertext:
+        return None
+    try:
+        return Fernet((STATE_DIR / '.api-key-fernet.key').read_bytes()).decrypt(ciphertext.encode('ascii')).decode('utf-8')
+    except (InvalidToken, OSError, ValueError) as ex:
+        raise RuntimeError('API-Schluessel nicht entschluesselbar. Verschluesselungsdatei/Backup kontrollieren.') from ex
+
+
 def db_init():
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)
@@ -110,6 +146,11 @@ def db_init():
           id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, tenant_id INTEGER,
           actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL);
         ''')
+        # Schema migration is additive: existing customers, phones and key hashes are retained.
+        columns = {row['name'] for row in db.execute('PRAGMA table_info(api_keys)')}
+        if 'token_ciphertext' not in columns:
+            db.execute('ALTER TABLE api_keys ADD COLUMN token_ciphertext TEXT')
+        ensure_encryption_key(db)
         db.execute('PRAGMA journal_mode=WAL')
         if not db.execute("SELECT 1 FROM settings WHERE key='admin_hash'").fetchone():
             db.execute('INSERT INTO settings VALUES (?,?)', ('admin_hash', pw_hash(admin_pw)))
@@ -124,9 +165,15 @@ def db_init():
                            (tenant_id, 'spontanschaltung', 9001, 0, now))
                 db.execute('INSERT INTO phones(tenant_id,label,sip_user,sip_password,created_at) VALUES(?,?,?,?,?)',
                            (tenant_id, 'Bisheriges Testtelefon', 'status01', legacy_sip, now))
-                db.execute('INSERT INTO api_keys(tenant_id,token_hash) VALUES(?,?)',
-                           (tenant_id, sha(legacy_api)))
+                db.execute('INSERT INTO api_keys(tenant_id,token_hash,token_ciphertext) VALUES(?,?,?)',
+                           (tenant_id, sha(legacy_api), encrypt_api_key(legacy_api)))
                 log.info('Bisheriges status01 SIP-Konto als Testanlage übernommen')
+        # Previous test installations may still have the legacy API_TOKEN in Dockhand.
+        # Recover only this *known* secret; arbitrary SHA-256 hashes are not reversible.
+        legacy_api = os.getenv('API_TOKEN', '')
+        if legacy_api:
+            db.execute('UPDATE api_keys SET token_ciphertext=? WHERE token_hash=? AND token_ciphertext IS NULL',
+                       (encrypt_api_key(legacy_api), sha(legacy_api)))
         db.commit()
     os.chmod(DB_PATH, 0o600)
 
@@ -235,11 +282,22 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
     stat = db.execute('SELECT * FROM status_items WHERE tenant_id=? ORDER BY extension', (tid,)).fetchall()
     phones = db.execute('SELECT * FROM phones WHERE tenant_id=? ORDER BY id', (tid,)).fetchall()
     csrf = csrf_field(session)
+    key_row = db.execute('SELECT token_ciphertext FROM api_keys WHERE tenant_id=?', (tid,)).fetchone()
+    key_recoverable = bool(key_row and key_row['token_ciphertext'])
     msg = f'<div class="ok">{e(notice)}</div>' if notice else ''
     if token:
-        msg += '<div class="ok"><b>Neuer API-Schlüssel – jetzt sicher kopieren. Wird nicht erneut angezeigt.</b><div class="secret">' + e(token) + '</div></div>'
+        msg += '<div class="ok"><b>API-Schlüssel (nach Passwortprüfung erneut abrufbar):</b><div class="secret">' + e(token) + '</div></div>'
     out = f'<p><a href="/admin">← Alle Kunden</a></p><h1>{e(tenant["name"])}</h1><p class="sub">Kennung: {e(tenant["slug"])} · ID: {tid} · {"Aktiv" if tenant["active"] else "Deaktiviert"}</p>' + msg
-    out += f'<div class="grid"><section class="card"><h2>Schnittstelle (3CX CFD)</h2><p class="sub">URL ist für alle Anlagen gleich; der API-Schlüssel bestimmt den Kunden.</p><code>POST /v1/status/spontanschaltung</code><p><code>X-API-Key: &lt;Kundenschlüssel&gt;</code></p><p><code>{{"value":1}}</code> oder <code>{{"value":0}}</code></p><form method="post" action="/admin/tenants/{tid}/rotate">{csrf}<button class="secondary">API-Schlüssel neu erzeugen</button></form><p class="muted"><small>Vorheriger Schlüssel wird sofort ungültig.</small></p></section>'
+    out += f'<div class="grid"><section class="card"><h2>Schnittstelle (3CX CFD)</h2><p class="sub">URL ist für alle Anlagen gleich; der API-Schlüssel bestimmt den Kunden.</p><code>POST /v1/status/spontanschaltung</code><p><code>X-API-Key: &lt;Kundenschlüssel&gt;</code></p><p><code>{{"value":1}}</code> oder <code>{{"value":0}}</code></p>'
+    if key_recoverable:
+        out += (f'<details><summary>API-Schlüssel anzeigen (Admin-Passwort erforderlich)</summary>'
+                f'<form method="post" action="/admin/tenants/{tid}/reveal">{csrf}'
+                '<label>Admin-Passwort</label><input type="password" name="password" autocomplete="current-password" required>'
+                '<p><button type="submit">Schlüssel anzeigen</button></p></form></details>')
+    else:
+        out += '<p class="muted">Bestehender Schlüssel nur als Hash gespeichert: nicht wiederherstellbar. Zum Anzeigen bitte einmalig einen neuen Schlüssel erzeugen.</p>'
+    out += f'<p><form method="post" action="/admin/tenants/{tid}/rotate">{csrf}<button class="secondary">API-Schlüssel neu erzeugen</button></form></p><p class="muted"><small>Achtung: Der alte Schlüssel wird dabei sofort ungültig.</small></p></section>'
+
     out += f'<section class="card"><h2>Administration</h2><form method="post" action="/admin/tenants/{tid}/active">{csrf}<button class="{ "warn" if tenant["active"] else "secondary" }">{ "Kunde deaktivieren" if tenant["active"] else "Kunde aktivieren" }</button></form><p class="sub">Deaktivierung sperrt API-Zugriff und entfernt SIP-Konten aus der aktiven Konfiguration.</p></section></div>'
     out += '<section class="card"><h2>Statusanzeigen</h2><table><tr><th>Name</th><th>BLF-Nummer</th><th>Zustand</th><th>Aktion</th></tr>'
     for s in stat:
@@ -249,9 +307,9 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
             new_val, label = 1, 'Auf EIN setzen'
         out += f'<tr><td>{e(s["slug"])}</td><td>{s["extension"]}</td><td><span class="pill {"" if s["value"] else "off"}">{"EIN / BUSY" if s["value"] else "AUS / IDLE"}</span></td><td><form class="inline" method="post" action="/admin/tenants/{tid}/set">{csrf}<input type="hidden" name="slug" value="{e(s["slug"])}"><input type="hidden" name="value" value="{new_val}"><button class="secondary">{label}</button></form></td></tr>'
     out += f'</table><details style="margin-top:18px"><summary>Status hinzufügen (max. 3 empfohlen)</summary><form method="post" action="/admin/tenants/{tid}/status">{csrf}<label>Interne Bezeichnung (a-z, 0-9, -)</label><input name="slug" required pattern="[a-z][a-z0-9-]{{1,30}}" placeholder="notbetrieb"><label>BLF-Nebenstelle</label><input type="number" name="extension" required min="100" max="99999" placeholder="9002"><p><button>Status anlegen</button></p></form></details></section>'
-    out += '<section class="card"><h2>Telefone</h2><p class="sub">Jedes Telefon erhält individuelle SIP-Zugangsdaten. Der Export enthält diese vertraulichen Werte und muss geschützt behandelt werden.</p><table><tr><th>Bezeichnung</th><th>SIP-Konto</th><th>3CX-Telefonvorlage</th><th>Aktiv</th></tr>'
+    out += '<section class="card"><h2>Telefone</h2><p class="sub">Jedes Telefon erhält individuelle SIP-Zugangsdaten. Der Export enthält diese vertraulichen Werte und muss geschützt behandelt werden.</p><table><tr><th>Bezeichnung</th><th>SIP-Konto</th><th>3CX-Telefonvorlage</th><th>Aktiv</th><th>Verwalten</th></tr>'
     for p in phones:
-        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/template">XML herunterladen</a> · <a href="/admin/phones/{p["id"]}/settings">SIP-Daten</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td></tr>'
+        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/template">XML herunterladen</a> · <a href="/admin/phones/{p["id"]}/settings">SIP-Daten</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td><td><a href="/admin/phones/{p["id"]}/settings">Verwalten / löschen</a></td></tr>'
     out += f'</table><form method="post" action="/admin/tenants/{tid}/phone">{csrf}<label>Telefonbezeichnung</label><input name="label" maxlength="80" required placeholder="Empfang T54W"><p><button>Telefon anlegen</button></p></form></section>'
     out += '<p class="muted">3CX-Kontakt: Der Server verbindet sich niemals mit einer 3CX-Anlage. Ausschließlich CFD → HTTPS-API und Telefon → SIP sind erforderlich.</p>'
     return page(tenant['name'], out, csrf)
@@ -260,23 +318,42 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
 def build_template(phone, tenant, sip_host, sip_port):
     """Per-customer 3CX template. Sensitive output, admin-authenticated only."""
     original = SOURCE_TEMPLATE.read_text('utf-8')
-    # Limit generation to actual intended phones by modifying the appropriate family
-    # block of the model-specific key mapping, while retaining every other line key.
-    marker = '{IF ua=SIP-T44U,SIP-T44W,SIP-T46S,SIP-T46U,SIP-T54W}'
-    head, sep, tail = original.partition(marker)
-    if not sep:
-        raise RuntimeError('Telefonvorlagenblock nicht gefunden')
-    start = tail.find('#Configure Line Key1')
-    end = tail.find('#Configure Line Key2')
-    if start == -1 or end == -1 or end <= start:
-        raise RuntimeError('Linekey-Tastendefinition nicht gefunden')
-    replacement = ("# NEXPERTO: Status-BLF auf physischer Taste 1, kein 3CX Callflow auf dieser Taste\n"
-                   "# Das erste 3CX-BLF-Feld wird ignoriert, Felder 2+ bleiben normal.\n"
-                   "linekey.1.line = 2\nlinekey.1.value = 9001\nlinekey.1.type = 16\n"
-                   "linekey.1.pickup_value =\nlinekey.1.extension =\n"
-                   "linekey.1.label = Spontanschaltung\n")
-    tail = tail[:start] + replacement + tail[end:]
-    original = head + marker + tail
+    # Keep the untouched 3CX key mappings for every model except the selected
+    # control phones. Modify precisely the first key of the matching model group.
+    # Yealink T40G/T42G/T48G share key groups with other models: nested IF
+    # branches preserve the stock behavior for those other models.
+    status_key = ("# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)\n"
+                  "linekey.1.line = 2\n"
+                  "linekey.1.value = 9001\n"
+                  "linekey.1.type = 16\n"
+                  "linekey.1.pickup_value =\n"
+                  "linekey.1.extension =\n"
+                  "linekey.1.label = Spontanschaltung\n")
+    groups = (
+        ('{IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}', None),
+        ('{IF ua=SIP-T23P,SIP-T23G,SIP-T40G,SIP-T40P}', 'SIP-T40G'),
+        ('{IF ua=SIP-T41S,SIP-T42G,SIP-T42S,SIP-T41U,SIP-T42U}', 'SIP-T42G'),
+        ('{IF ua=SIP-T48G,SIP-T48S,SIP-T57W,SIP-T48U}', 'SIP-T48G'),
+    )
+    for marker, only_model in groups:
+        head, sep, tail = original.partition(marker)
+        if not sep:
+            raise RuntimeError('Telefonvorlagenblock nicht gefunden: ' + marker)
+        start = tail.find('#Configure Line Key1')
+        end = tail.find('#Configure Line Key2')
+        group_end = tail.find('{ENDIF}')
+        if start < 0 or end < 0 or end <= start or group_end < start:
+            raise RuntimeError('Linekey-Tastendefinition nicht gefunden: ' + marker)
+        previous = tail[start:end]
+        if only_model:
+            replacement = (f'{{IF ua={only_model}}}\n' + status_key
+                           + '{ELSE}\n' + previous + '{ENDIF}\n')
+        else:
+            replacement = status_key
+        tail = tail[:start] + replacement + tail[end:]
+        original = head + marker + tail
+    # Account.2 is defined only once in the MAC-specific config CDATA.
+    marker = groups[0][0]
     # Per-phone account.2 config is placed in MAC-specific config CDATA, before the
     # linekey branch. 3CX account.1 settings are untouched.
     snippet = ('\n# NEXPERTO: BLF-SIP-Konto 2 / eigener Kunde. Nicht in GitHub speichern.\n'
@@ -433,6 +510,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except (OSError,RuntimeError) as ex: self.error(500,str(ex));return
                     self.output(200,content,'application/xml; charset=utf-8',{'Content-Disposition':f'attachment; filename="blf-{t["slug"]}-{p["id"]}.xml"'});return
                 out=f'<p><a href="/admin/tenants/{t["id"]}">← Kunde</a></p><h1>{e(p["label"])}</h1><div class="card"><h2>SIP-Konto 2</h2><p>Server: <code>{e(SIP_HOST)}:{SIP_PORT}/UDP</code></p><p>Benutzer / Auth-Name: <code>{e(p["sip_user"])}</code></p><p>Passwort:</p><div class="secret">{e(p["sip_password"])}</div><p><a class="button" href="/admin/phones/{p["id"]}/template">Kundenspezifische 3CX-XML laden</a></p><p class="muted">Vertraulich: XML enthält SIP-Zugangsdaten und gehört nicht ins öffentliche GitHub.</p></div>'
+                out += (f'<div class="card"><details><summary>Telefon dauerhaft löschen</summary>'
+                        '<p class="sub">Das SIP-Konto wird aus der aktiven Asterisk-Konfiguration entfernt. Ein Export dieser XML wird anschließend nicht mehr möglich sein.</p>'
+                        f'<form method="post" action="/admin/phones/{p["id"]}/delete">{csrf_field(session)}'
+                        f'<label>Zur Bestätigung exakt <code>{e(p["sip_user"])}</code> eingeben</label>'
+                        '<input name="confirm" required autocomplete="off" placeholder="SIP-Benutzer eingeben">'
+                        '<p><button class="warn" type="submit">Telefon unwiderruflich löschen</button></p>'
+                        '</form></details></div>')
+
                 self.output(200,page('Telefon',out,csrf_field(session)));return
         self.error(404,'Seite nicht gefunden')
 
@@ -464,7 +549,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     now=int(time.time()); token=fresh_key()
                     tid=db.execute('INSERT INTO tenants(slug,name,created_at) VALUES(?,?,?)',(slug,name,now)).lastrowid
                     db.execute('INSERT INTO status_items(tenant_id,slug,extension,value,changed_at) VALUES(?,?,?,?,?)',(tid,'spontanschaltung',9001,0,now))
-                    db.execute('INSERT INTO api_keys(tenant_id,token_hash) VALUES(?,?)',(tid,sha(token)))
+                    db.execute('INSERT INTO api_keys(tenant_id,token_hash,token_ciphertext) VALUES(?,?,?)',(tid,sha(token),encrypt_api_key(token)))
                     db.commit()
                 except sqlite3.IntegrityError:
                     self.error(409,'Kundenkennung existiert bereits');return
@@ -472,15 +557,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.error(503,'Kunde gespeichert, Asterisk Reload fehlgeschlagen. Bitte Logs kontrollieren.');return
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
                 self.output(200,tenant_panel(db,t,session,token,'Kunde angelegt.'));return
-            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|active|phone|status|set)',path)
+            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|reveal|active|phone|status|set)',path)
             if m:
                 tid=int(m.group(1)); action=m.group(2)
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
                 if not t: self.error(404,'Kunde nicht vorhanden');return
                 if action=='rotate':
                     token=fresh_key()
-                    db.execute('UPDATE api_keys SET token_hash=? WHERE tenant_id=?',(sha(token),tid));db.commit()
+                    db.execute('UPDATE api_keys SET token_hash=?,token_ciphertext=? WHERE tenant_id=?',
+                               (sha(token),encrypt_api_key(token),tid));db.commit()
                     self.output(200,tenant_panel(db,t,session,token,'API-Schlüssel erneuert.'));return
+                if action=='reveal':
+                    ip = self.client_address[0]
+                    now = time.monotonic()
+                    recent = [x for x in REVEAL_FAILURES.get(ip, []) if x > now - 900]
+                    if len(recent) >= 5:
+                        self.error(429, 'Zu viele fehlgeschlagene Passwortprüfungen.');return
+                    stored = db.execute("SELECT value FROM settings WHERE key='admin_hash'").fetchone()['value']
+                    if not pw_verify(f.get('password', ''), stored):
+                        recent.append(now)
+                        REVEAL_FAILURES[ip] = recent
+                        self.error(403, 'Admin-Passwort ist falsch');return
+                    REVEAL_FAILURES.pop(ip,None)
+                    key_row = db.execute('SELECT token_ciphertext FROM api_keys WHERE tenant_id=?',(tid,)).fetchone()
+                    if not key_row or not key_row['token_ciphertext']:
+                        self.error(409,'Dieser ältere API-Key lässt sich nicht wiederherstellen. Bitte neuen Schlüssel erzeugen.');return
+                    try: token = decrypt_api_key(key_row['token_ciphertext'])
+                    except RuntimeError:
+                        self.error(503,'API-Schlüssel kann nicht entschlüsselt werden. Key-Backup prüfen.');return
+                    self.output(200,tenant_panel(db,t,session,token,'API-Schlüssel nach Passwortprüfung angezeigt.'));return
                 if action=='active':
                     db.execute('UPDATE tenants SET active=? WHERE id=?',(0 if t['active'] else 1,tid));db.commit()
                     if not reload_asterisk(): self.error(503,'Änderung gespeichert, Asterisk Reload fehlgeschlagen');return
@@ -513,10 +618,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except RuntimeError: self.error(503,'Asterisk nicht erreichbar');return
                     if result is None: self.error(404,'Status nicht gefunden oder Kunde deaktiviert');return
                     self.redirect(f'/admin/tenants/{tid}');return
-            m=re.fullmatch(r'/admin/phones/(\d+)/active',path)
+            m=re.fullmatch(r'/admin/phones/(\d+)/(active|delete)',path)
             if m:
                 pid=int(m.group(1));p=db.execute('SELECT * FROM phones WHERE id=?',(pid,)).fetchone()
                 if not p: self.error(404,'Telefon nicht gefunden');return
+                if m.group(2)=='delete':
+                    if not hmac.compare_digest(f.get('confirm',''), p['sip_user']):
+                        self.error(400,'Bitte die exakte SIP-Kennung des Telefons bestätigen.');return
+                    db.execute('DELETE FROM phones WHERE id=?', (pid,))
+                    db.execute('INSERT INTO audit(ts,tenant_id,actor,action,detail) VALUES(?,?,?,?,?)',
+                               (int(time.time()),p['tenant_id'],'admin','phone_delete',
+                                f'phone_id={pid} user={p["sip_user"]}'))
+                    db.commit()
+                    if not reload_asterisk(): self.error(503,'Telefon gelöscht, aber Asterisk-Reload fehlgeschlagen. Logs kontrollieren.');return
+                    self.redirect(f'/admin/tenants/{p["tenant_id"]}');return
                 db.execute('UPDATE phones SET active=? WHERE id=?',(0 if p['active'] else 1,pid));db.commit()
                 if not reload_asterisk(): self.error(503,'Telefonzustand gespeichert, Reload fehlgeschlagen');return
                 self.redirect(f'/admin/tenants/{p["tenant_id"]}');return

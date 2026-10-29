@@ -4,44 +4,47 @@
     <type>phone-template</type>
     <version>150010</version>
     <time>2026-07-27 15:00:00</time>
-    <name>Yealink T4X BLF testkunde</name>
+    <name>Yealink T4X BLF beispiel</name>
     <url>https://www.3cx.com/sip-phones/yealink-t4-series/</url>
     <templatetype>preferred</templatetype>
     <models>
-      <model ua="SIP-T19_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T19 E2 [BLF testkunde]</model>
-      <model ua="SIP-T19P_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T19P E2 [BLF testkunde]</model>
-      <model ua="SIP-T21_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T21 E2 [BLF testkunde]</model>
-      <model ua="SIP-T21P_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T21P E2 [BLF testkunde]</model>
-      <model ua="SIP-T23G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T23G [BLF testkunde]</model>
-      <model ua="SIP-T23P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T23P [BLF testkunde]</model>
-      <model ua="SIP-T27G" canbesbc="false" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T27G [BLF testkunde]</model>
-      <model ua="SIP-T30P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T30P [BLF testkunde]</model>
-      <model ua="SIP-T31G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31G [BLF testkunde]</model>
-      <model ua="SIP-T31P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31P [BLF testkunde]</model>
-      <model ua="SIP-T31W" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31W [BLF testkunde]</model>
-      <model ua="SIP-T33G" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T33G [BLF testkunde]</model>
-      <model ua="SIP-T33P" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T33P [BLF testkunde]</model>
-      <model ua="SIP-T34W" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T34W [BLF testkunde]</model>
-      <model ua="SIP-T40G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T40G [BLF testkunde]</model>
-      <model ua="SIP-T40P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T40P [BLF testkunde]</model>
-      <model ua="SIP-T41S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T41S [BLF testkunde]</model>
-      <model ua="SIP-T41U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T41U [BLF testkunde]</model>
-      <model ua="SIP-T42S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T42S [BLF testkunde]</model>
-      <model ua="SIP-T42U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T42U [BLF testkunde]</model>
-      <model ua="SIP-T43U" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T43U [BLF testkunde]</model>
-      <model ua="SIP-T44U" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44U [BLF testkunde]</model>
-      <model ua="SIP-T44W" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44W [BLF testkunde]</model>
-      <model ua="SIP-T46S" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T46S [BLF testkunde]</model>
-      <model ua="SIP-T46U" canbesbc="true" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24">Yealink T46U [BLF testkunde]</model>
-      <model ua="SIP-T48S" canbesbc="false" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T48S [BLF testkunde]</model>
-      <model ua="SIP-T48U" canbesbc="true" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24">Yealink T48U [BLF testkunde]</model>
-      <model ua="SIP-T52S" canbesbc="false" defaultlogo="yealinkt52.png" logowidth="320" logoheight="240" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T52S [BLF testkunde]</model>
-      <model ua="SIP-T53" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T53 [BLF testkunde]</model>
-      <model ua="SIP-T53C" canbesbc="true" defaultlogo="yealinkt53c.png" logowidth="480" logoheight="320" logobitdepth="24">Yealink T53C [BLF testkunde]</model>
-      <model ua="SIP-T53W" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T53W [BLF testkunde]</model>
-      <model ua="SIP-T54S" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T54S [BLF testkunde]</model>
-      <model ua="SIP-T54W" canbesbc="true" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24">Yealink T54W [BLF testkunde]</model>
-      <model ua="SIP-T57W" canbesbc="true" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24">Yealink T57W [BLF testkunde]</model>
+      <model ua="SIP-T19_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T19 E2 [BLF beispiel]</model>
+      <model ua="SIP-T19P_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T19P E2 [BLF beispiel]</model>
+      <model ua="SIP-T21_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T21 E2 [BLF beispiel]</model>
+      <model ua="SIP-T21P_E2" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T21P E2 [BLF beispiel]</model>
+      <model ua="SIP-T23G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T23G [BLF beispiel]</model>
+      <model ua="SIP-T23P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T23P [BLF beispiel]</model>
+      <model ua="SIP-T27G" canbesbc="false" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T27G [BLF beispiel]</model>
+      <model ua="SIP-T30P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T30P [BLF beispiel]</model>
+      <model ua="SIP-T31G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31G [BLF beispiel]</model>
+      <model ua="SIP-T31P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31P [BLF beispiel]</model>
+      <model ua="SIP-T31W" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T31W [BLF beispiel]</model>
+      <model ua="SIP-T33G" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T33G [BLF beispiel]</model>
+      <model ua="SIP-T33P" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T33P [BLF beispiel]</model>
+      <model ua="SIP-T34W" canbesbc="false" defaultlogo="yealinkt33.png" logowidth="320" logoheight="240" logobitdepth="1">Yealink T34W [BLF beispiel]</model>
+      <model ua="SIP-T40G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T40G [BLF beispiel]</model>
+      <model ua="SIP-T40P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T40P [BLF beispiel]</model>
+      <model ua="SIP-T41S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T41S [BLF beispiel]</model>
+      <model ua="SIP-T41U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T41U [BLF beispiel]</model>
+      <model ua="SIP-T42G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T42 [BLF beispiel]</model>
+      <model ua="SIP-T42S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T42S [BLF beispiel]</model>
+      <model ua="SIP-T42U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T42U [BLF beispiel]</model>
+      <model ua="SIP-T43U" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T43U [BLF beispiel]</model>
+      <model ua="SIP-T44U" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44U [BLF beispiel]</model>
+      <model ua="SIP-T44W" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44W [BLF beispiel]</model>
+      <model ua="SIP-T46G" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T46 [BLF beispiel]</model>
+      <model ua="SIP-T46S" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T46S [BLF beispiel]</model>
+      <model ua="SIP-T46U" canbesbc="true" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24">Yealink T46U [BLF beispiel]</model>
+      <model ua="SIP-T48G" canbesbc="false" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T48 [BLF beispiel]</model>
+      <model ua="SIP-T48S" canbesbc="false" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T48S [BLF beispiel]</model>
+      <model ua="SIP-T48U" canbesbc="true" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24">Yealink T48U [BLF beispiel]</model>
+      <model ua="SIP-T52S" canbesbc="false" defaultlogo="yealinkt52.png" logowidth="320" logoheight="240" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T52S [BLF beispiel]</model>
+      <model ua="SIP-T53" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T53 [BLF beispiel]</model>
+      <model ua="SIP-T53C" canbesbc="true" defaultlogo="yealinkt53c.png" logowidth="480" logoheight="320" logobitdepth="24">Yealink T53C [BLF beispiel]</model>
+      <model ua="SIP-T53W" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T53W [BLF beispiel]</model>
+      <model ua="SIP-T54S" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T54S [BLF beispiel]</model>
+      <model ua="SIP-T54W" canbesbc="true" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24">Yealink T54W [BLF beispiel]</model>
+      <model ua="SIP-T57W" canbesbc="true" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24">Yealink T57W [BLF beispiel]</model>
     </models>
     <description>Yealink T4X BLF Steuerung</description>
     <parsers>
@@ -864,40 +867,43 @@
       <field name="Name">Yealink T4X</field>
       <deviceconfig filename="y100000000029.cfg">
         <filename>
-          <model name="Yealink T19 E2 [BLF testkunde]" filename="y100000000053.cfg" />
-          <model name="Yealink T19P E2 [BLF testkunde]" filename="y100000000053.cfg" />
-          <model name="Yealink T21 E2 [BLF testkunde]" filename="y100000000052.cfg" />
-          <model name="Yealink T21P E2 [BLF testkunde]" filename="y100000000052.cfg" />
-          <model name="Yealink T23G [BLF testkunde]" filename="y100000000044.cfg" />
-          <model name="Yealink T23P [BLF testkunde]" filename="y100000000044.cfg" />
-          <model name="Yealink T27G [BLF testkunde]" filename="y100000000069.cfg" />
-          <model name="Yealink T30P [BLF testkunde]" filename="y100000000127.cfg" />
-          <model name="Yealink T31G [BLF testkunde]" filename="y100000000123.cfg" />
-          <model name="Yealink T31P [BLF testkunde]" filename="y100000000123.cfg" />
-          <model name="Yealink T31W [BLF testkunde]" filename="y100000000172.cfg" />
-          <model name="Yealink T33G [BLF testkunde]" filename="y100000000124.cfg" />
-          <model name="Yealink T33P [BLF testkunde]" filename="y100000000124.cfg" />
-          <model name="Yealink T34W [BLF testkunde]" filename="y100000000171.cfg" />
-          <model name="Yealink T40G [BLF testkunde]" filename="y100000000076.cfg" />
-          <model name="Yealink T40P [BLF testkunde]" filename="y100000000054.cfg" />
-          <model name="Yealink T41S [BLF testkunde]" filename="y100000000068.cfg" />
-          <model name="Yealink T41U [BLF testkunde]" filename="y100000000106.cfg" />
-          <model name="Yealink T42S [BLF testkunde]" filename="y100000000067.cfg" />
-          <model name="Yealink T42U [BLF testkunde]" filename="y100000000116.cfg" />
-          <model name="Yealink T43U [BLF testkunde]" filename="y100000000107.cfg" />
-          <model name="Yealink T44U [BLF testkunde]" filename="y100000000173.cfg" />
-          <model name="Yealink T44W [BLF testkunde]" filename="y100000000174.cfg" />
-          <model name="Yealink T46S [BLF testkunde]" filename="y100000000066.cfg" />
-          <model name="Yealink T46U [BLF testkunde]" filename="y100000000108.cfg" />
-          <model name="Yealink T48S [BLF testkunde]" filename="y100000000065.cfg" />
-          <model name="Yealink T48U [BLF testkunde]" filename="y100000000109.cfg" />
-          <model name="Yealink T52S [BLF testkunde]" filename="y100000000074.cfg" />
-          <model name="Yealink T53 [BLF testkunde]" filename="y100000000095.cfg" />
-          <model name="Yealink T53C [BLF testkunde]" filename="y100000000095.cfg" />
-          <model name="Yealink T53W [BLF testkunde]" filename="y100000000095.cfg" />
-          <model name="Yealink T54S [BLF testkunde]" filename="y100000000070.cfg" />
-          <model name="Yealink T54W [BLF testkunde]" filename="y100000000096.cfg" />
-          <model name="Yealink T57W [BLF testkunde]" filename="y100000000097.cfg" />
+          <model name="Yealink T19 E2 [BLF beispiel]" filename="y100000000053.cfg" />
+          <model name="Yealink T19P E2 [BLF beispiel]" filename="y100000000053.cfg" />
+          <model name="Yealink T21 E2 [BLF beispiel]" filename="y100000000052.cfg" />
+          <model name="Yealink T21P E2 [BLF beispiel]" filename="y100000000052.cfg" />
+          <model name="Yealink T23G [BLF beispiel]" filename="y100000000044.cfg" />
+          <model name="Yealink T23P [BLF beispiel]" filename="y100000000044.cfg" />
+          <model name="Yealink T27G [BLF beispiel]" filename="y100000000069.cfg" />
+          <model name="Yealink T30P [BLF beispiel]" filename="y100000000127.cfg" />
+          <model name="Yealink T31G [BLF beispiel]" filename="y100000000123.cfg" />
+          <model name="Yealink T31P [BLF beispiel]" filename="y100000000123.cfg" />
+          <model name="Yealink T31W [BLF beispiel]" filename="y100000000172.cfg" />
+          <model name="Yealink T33G [BLF beispiel]" filename="y100000000124.cfg" />
+          <model name="Yealink T33P [BLF beispiel]" filename="y100000000124.cfg" />
+          <model name="Yealink T34W [BLF beispiel]" filename="y100000000171.cfg" />
+          <model name="Yealink T40G [BLF beispiel]" filename="y100000000076.cfg" />
+          <model name="Yealink T40P [BLF beispiel]" filename="y100000000054.cfg" />
+          <model name="Yealink T41S [BLF beispiel]" filename="y100000000068.cfg" />
+          <model name="Yealink T41U [BLF beispiel]" filename="y100000000106.cfg" />
+          <model name="Yealink T42 [BLF beispiel]" filename="y100000000029.cfg" />
+          <model name="Yealink T42S [BLF beispiel]" filename="y100000000067.cfg" />
+          <model name="Yealink T42U [BLF beispiel]" filename="y100000000116.cfg" />
+          <model name="Yealink T43U [BLF beispiel]" filename="y100000000107.cfg" />
+          <model name="Yealink T44U [BLF beispiel]" filename="y100000000173.cfg" />
+          <model name="Yealink T44W [BLF beispiel]" filename="y100000000174.cfg" />
+          <model name="Yealink T46 [BLF beispiel]" filename="y100000000028.cfg" />
+          <model name="Yealink T46S [BLF beispiel]" filename="y100000000066.cfg" />
+          <model name="Yealink T46U [BLF beispiel]" filename="y100000000108.cfg" />
+          <model name="Yealink T48 [BLF beispiel]" filename="y100000000035.cfg" />
+          <model name="Yealink T48S [BLF beispiel]" filename="y100000000065.cfg" />
+          <model name="Yealink T48U [BLF beispiel]" filename="y100000000109.cfg" />
+          <model name="Yealink T52S [BLF beispiel]" filename="y100000000074.cfg" />
+          <model name="Yealink T53 [BLF beispiel]" filename="y100000000095.cfg" />
+          <model name="Yealink T53C [BLF beispiel]" filename="y100000000095.cfg" />
+          <model name="Yealink T53W [BLF beispiel]" filename="y100000000095.cfg" />
+          <model name="Yealink T54S [BLF beispiel]" filename="y100000000070.cfg" />
+          <model name="Yealink T54W [BLF beispiel]" filename="y100000000096.cfg" />
+          <model name="Yealink T57W [BLF beispiel]" filename="y100000000097.cfg" />
         </filename><![CDATA[#!version:1.0.0.1
 
 #######################################################################################
@@ -1663,12 +1669,24 @@ auto_provision.common_file_name = y100000000054.cfg
 auto_provision.common_file_name = y100000000068.cfg
 {ENDIF}
 
+{IF ua=SIP-T42G}
+auto_provision.common_file_name = y100000000029.cfg
+{ENDIF}
+
 {IF ua=SIP-T42S}
 auto_provision.common_file_name = y100000000067.cfg
 {ENDIF}
 
+{IF ua=SIP-T46G}
+auto_provision.common_file_name = y100000000028.cfg
+{ENDIF}
+
 {IF ua=SIP-T46S}
 auto_provision.common_file_name = y100000000066.cfg
+{ENDIF}
+
+{IF ua=SIP-T48G}
+auto_provision.common_file_name = y100000000035.cfg
 {ENDIF}
 
 {IF ua=SIP-T48S}
@@ -4966,6 +4984,15 @@ linekey.2.type =  0
 {ENDIF}
 
 {IF ua=SIP-T23P,SIP-T23G,SIP-T40G,SIP-T40P}
+{IF ua=SIP-T40G}
+# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
+linekey.1.line = 2
+linekey.1.value = 9001
+linekey.1.type = 16
+linekey.1.pickup_value =
+linekey.1.extension =
+linekey.1.label = Spontanschaltung
+{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -4976,6 +5003,7 @@ linekey.1.label = %%label%%
 linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key2
 {IF blf2}
@@ -5373,22 +5401,21 @@ linekey.21.type =  0
 
 # NEXPERTO: BLF-SIP-Konto 2 / eigener Kunde. Nicht in GitHub speichern.
 account.2.enable = 1
-account.2.label = BLF testkunde
-account.2.display_name = BLF testkunde
-account.2.user_name = SIP_BENUTZER_HIER
-account.2.auth_name = SIP_BENUTZER_HIER
-account.2.password = SIP_PASSWORT_HIER
+account.2.label = BLF beispiel
+account.2.display_name = BLF beispiel
+account.2.user_name = blf_beispiel_telefon
+account.2.auth_name = blf_beispiel_telefon
+account.2.password = NUR-BEISPIEL-KENNUNG-KEIN-ECHTES-PASSWORT
 account.2.sip_server.1.transport_type = 0
-account.2.sip_server.1.address = blf.example.de
+account.2.sip_server.1.address = blf.example.test
 account.2.sip_server.1.port = 5062
 account.2.sip_server.1.expires = 300
 account.2.sip_server.1.register_on_enable = 1
 account.2.sip_server.1.failback_mode = 0
 account.2.outbound_proxy_enable = 0
 
-{IF ua=SIP-T44U,SIP-T44W,SIP-T46S,SIP-T46U,SIP-T54W}
-# NEXPERTO: Status-BLF auf physischer Taste 1, kein 3CX Callflow auf dieser Taste
-# Das erste 3CX-BLF-Feld wird ignoriert, Felder 2+ bleiben normal.
+{IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}
+# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
 linekey.1.line = 2
 linekey.1.value = 9001
 linekey.1.type = 16
@@ -5683,7 +5710,16 @@ linekey.27.type =  0
 {ENDIF}
 {ENDIF}
 
-{IF ua=SIP-T41S,SIP-T42S,SIP-T41U,SIP-T42U}
+{IF ua=SIP-T41S,SIP-T42G,SIP-T42S,SIP-T41U,SIP-T42U}
+{IF ua=SIP-T42G}
+# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
+linekey.1.line = 2
+linekey.1.value = 9001
+linekey.1.type = 16
+linekey.1.pickup_value =
+linekey.1.extension =
+linekey.1.label = Spontanschaltung
+{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5694,6 +5730,7 @@ linekey.1.label = %%label%%
 linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key2
 {IF blf2}
@@ -5851,7 +5888,16 @@ linekey.15.type =  0
 {ENDIF}
 {ENDIF}
 
-{IF ua=SIP-T48S,SIP-T57W,SIP-T48U}
+{IF ua=SIP-T48G,SIP-T48S,SIP-T57W,SIP-T48U}
+{IF ua=SIP-T48G}
+# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
+linekey.1.line = 2
+linekey.1.value = 9001
+linekey.1.type = 16
+linekey.1.pickup_value =
+linekey.1.extension =
+linekey.1.label = Spontanschaltung
+{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5862,6 +5908,7 @@ linekey.1.label = %%label%%
 linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key2
 {IF blf2}

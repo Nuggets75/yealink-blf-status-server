@@ -26,13 +26,16 @@
       <model ua="SIP-T40P" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T40P</model>
       <model ua="SIP-T41S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T41S</model>
       <model ua="SIP-T41U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T41U</model>
+      <model ua="SIP-T42G" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T42</model>
       <model ua="SIP-T42S" canbesbc="false" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T42S</model>
       <model ua="SIP-T42U" canbesbc="true" defaultlogo="yealinkt22.dob" logowidth="132" logoheight="64" logobitdepth="1">Yealink T42U</model>
       <model ua="SIP-T43U" canbesbc="true" defaultlogo="yealinkt28.dob" logowidth="236" logoheight="82" logobitdepth="1">Yealink T43U</model>
       <model ua="SIP-T44U" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44U</model>
       <model ua="SIP-T44W" canbesbc="true" defaultlogo="yealinkt44.png" logowidth="320" logoheight="240" logobitdepth="24">Yealink T44W</model>
+      <model ua="SIP-T46G" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T46</model>
       <model ua="SIP-T46S" canbesbc="false" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T46S</model>
       <model ua="SIP-T46U" canbesbc="true" defaultlogo="yealinkt46.png" logowidth="480" logoheight="272" logobitdepth="24">Yealink T46U</model>
+      <model ua="SIP-T48G" canbesbc="false" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T48</model>
       <model ua="SIP-T48S" canbesbc="false" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T48S</model>
       <model ua="SIP-T48U" canbesbc="true" defaultlogo="yealinkt48.png" logowidth="800" logoheight="480" logobitdepth="24">Yealink T48U</model>
       <model ua="SIP-T52S" canbesbc="false" defaultlogo="yealinkt52.png" logowidth="320" logoheight="240" logobitdepth="24" interfaceLink="https://admin:%%PHONE_WEB_PASSWORD%%@%%PHONE_IP%%">Yealink T52S</model>
@@ -882,13 +885,16 @@
           <model name="Yealink T40P" filename="y000000000054.cfg" />
           <model name="Yealink T41S" filename="y000000000068.cfg" />
           <model name="Yealink T41U" filename="y000000000106.cfg" />
+          <model name="Yealink T42" filename="y000000000029.cfg" />
           <model name="Yealink T42S" filename="y000000000067.cfg" />
           <model name="Yealink T42U" filename="y000000000116.cfg" />
           <model name="Yealink T43U" filename="y000000000107.cfg" />
           <model name="Yealink T44U" filename="y000000000173.cfg" />
           <model name="Yealink T44W" filename="y000000000174.cfg" />
+          <model name="Yealink T46" filename="y000000000028.cfg" />
           <model name="Yealink T46S" filename="y000000000066.cfg" />
           <model name="Yealink T46U" filename="y000000000108.cfg" />
+          <model name="Yealink T48" filename="y000000000035.cfg" />
           <model name="Yealink T48S" filename="y000000000065.cfg" />
           <model name="Yealink T48U" filename="y000000000109.cfg" />
           <model name="Yealink T52S" filename="y000000000074.cfg" />
@@ -1663,12 +1669,24 @@ auto_provision.common_file_name = y000000000054.cfg
 auto_provision.common_file_name = y000000000068.cfg
 {ENDIF}
 
+{IF ua=SIP-T42G}
+auto_provision.common_file_name = y000000000029.cfg
+{ENDIF}
+
 {IF ua=SIP-T42S}
 auto_provision.common_file_name = y000000000067.cfg
 {ENDIF}
 
+{IF ua=SIP-T46G}
+auto_provision.common_file_name = y000000000028.cfg
+{ENDIF}
+
 {IF ua=SIP-T46S}
 auto_provision.common_file_name = y000000000066.cfg
+{ENDIF}
+
+{IF ua=SIP-T48G}
+auto_provision.common_file_name = y000000000035.cfg
 {ENDIF}
 
 {IF ua=SIP-T48S}
@@ -5370,7 +5388,7 @@ linekey.21.type =  0
 {ENDIF}
 {ENDIF}
 
-{IF ua=SIP-T44U,SIP-T44W,SIP-T46S,SIP-T46U,SIP-T54W}
+{IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5670,7 +5688,7 @@ linekey.27.type =  0
 {ENDIF}
 {ENDIF}
 
-{IF ua=SIP-T41S,SIP-T42S,SIP-T41U,SIP-T42U}
+{IF ua=SIP-T41S,SIP-T42G,SIP-T42S,SIP-T41U,SIP-T42U}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5838,7 +5856,7 @@ linekey.15.type =  0
 {ENDIF}
 {ENDIF}
 
-{IF ua=SIP-T48S,SIP-T57W,SIP-T48U}
+{IF ua=SIP-T48G,SIP-T48S,SIP-T57W,SIP-T48U}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%

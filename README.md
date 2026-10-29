@@ -19,7 +19,7 @@ Yealink Telefon (Kunde A): SIP REGISTER/SUBSCRIBE -> Asterisk:5062/UDP -> SIP NO
 - Getrennte SIP-Accounts pro **Telefon**, eigene Asterisk-Kontexte und Statuswerte pro **Kunde**. BLF-Nebenstelle `9001` darf bei jedem Kunden dieselbe Nummer sein.
 - Eigener API-Schlüssel pro Kunde, der **den Kunden bestimmt**; ein Client kann nicht durch Manipulation von Kunden-IDs andere Anlagen steuern.
 - Admin-Weboberfläche unter `/admin` mit Login, Kunden, Telefonen, Statuswerten, API-Key-Rotation und manueller Statusprüfung.
-- Sichere, kundenspezifische 3CX-Custom-Template-Downloads (enthalten SIP-Passwörter). Standardmäßig wird **Taste 1** (für T46S/T54W sowie Modelle in derselben 3CX-Tastengruppe) die Status-BLF `9001` auf SIP-Account 2. **Taste 2 und alle weiteren bleiben weiterhin gemäß 3CX konfigurierbar.**
+- Sichere, kundenspezifische 3CX-Custom-Template-Downloads (enthalten SIP-Passwörter). Standardmäßig wird **Taste 1** (für T40G/T42G/T46G/T48G sowie T46S/T54W und Modelle in derselben 3CX-Tastengruppe) die Status-BLF `9001` auf SIP-Account 2. **Taste 2 und alle weiteren bleiben weiterhin gemäß 3CX konfigurierbar.**
 - Die Callflow-Nummern (etwa 951) bleiben ausschließlich auf der 3CX-Seite. Der Statusserver ruft **keine** 3CX an.
 
 ### Hinweis zur Tastenkonfiguration
@@ -61,7 +61,7 @@ Die physische Taste 1 ist damit **nicht mehr über BLF-Feld 1 der 3CX konfigurie
 
 ### Persistenz
 
-Datenbank und generierte Asterisk-Konfiguration liegen im persistenten Docker-Volume unter `/var/lib/asterisk/blf`. Keine SIP-/API-Secrets in Docker-Images, GitHub oder Logs ablegen. Der Admin-Login verwendet ein PBKDF2-gehashtes Passwort, API-Schlüssel liegen ausschließlich als SHA-256-Hash vor. SIP-Passwörter werden zum Generieren der PJSIP-Konfiguration **im geschützten lokalen Datenbank-Volume im Klartext** benötigt; schützt dieses Volume samt Backups entsprechend. Die Admin-Passwort-Umgebungsvariable wird nur bei der **Ersteinrichtung** für die Datenbank verwendet; danach ist ein Passwortwechsel über `/admin/password` möglich.
+Datenbank und generierte Asterisk-Konfiguration liegen im persistenten Docker-Volume unter `/var/lib/asterisk/blf`. Keine SIP-/API-Secrets in Docker-Images, GitHub oder Logs ablegen. Der Admin-Login verwendet ein PBKDF2-gehashtes Passwort, API-Schlüssel werden zur API-Authentifizierung als SHA-256-Hash und für die optionale Wiederanzeige zusätzlich verschlüsselt (Fernet) gespeichert. SIP-Passwörter werden zum Generieren der PJSIP-Konfiguration **im geschützten lokalen Datenbank-Volume im Klartext** benötigt; schützt dieses Volume samt Backups entsprechend. Die Admin-Passwort-Umgebungsvariable wird nur bei der **Ersteinrichtung** für die Datenbank verwendet; danach ist ein Passwortwechsel über `/admin/password` möglich.
 
 ## Nginx Proxy Manager: HTTPS
 
@@ -84,7 +84,7 @@ Sicherheitsmaßnahmen: Admin-Zugriff auf `/admin` über Nginx nach Möglichkeit 
 
 1. `https://blf-api.deine-domain.de/admin` öffnen. Beim ersten Start mit `ADMIN_PASSWORD` anmelden.
 2. **Neuen Kunden anlegen** (`name`, eindeutige `slug`-Kennung). Standardstatus `spontanschaltung` mit BLF-Nummer `9001` wird automatisch eingerichtet.
-3. Den angezeigten **API-Schlüssel sofort kopieren**. Er ist nur einmal sichtbar. Über den Knopf **API-Schlüssel neu erzeugen** kann er ersetzt werden; alter Schlüssel verliert dann sofort seine Gültigkeit.
+3. API-Schlüssel nach der Anlage sicher verwahren. Bei Schlüsseln aus Version 1.2 kann er später nach erneuter Admin-Passwortprüfung unter **API-Schlüssel anzeigen** eingesehen werden. Schlüssel aus der alten Version lassen sich nur anzeigen, wenn der frühere `API_TOKEN` noch bekannt ist; sonst einmalig **API-Schlüssel neu erzeugen** verwenden (alter Schlüssel verliert dann sofort seine Gültigkeit).
 4. Ein **Telefon hinzufügen**, Bezeichnung eingeben. Das neue SIP-Konto wird serverseitig erzeugt und Asterisk neu geladen.
 5. Unter dem Telefon **SIP-Daten** einsehen; dort auch die **kundenspezifische 3CX-XML-Vorlage** herunterladen.
 6. Kunden bei Bedarf deaktivieren, zusätzliche Statusressourcen (z. B. `notbetrieb`, BLF `9002`) hinzufügen und aktuelle Zustände im Webinterface überprüfen.
@@ -192,3 +192,79 @@ GitHub committen (alle anderen Dateien koennen bleiben). In Dockhand einen
 Ein Container-Neustart ohne neuen Image-Build behebt den Fehler **nicht**.
 Die `docker-compose.remote.yml` und alle bestehenden Umgebungsvariablen koennen
 unveraendert bleiben. Das persistente `asterisk-state`-Volume nicht loeschen.
+
+## Update: Yealink-T4x-G-Serie (T40G, T42G, T46G, T48G)
+
+Die generierte kundenspezifische Vorlage enthält nun zusätzlich die Modelle:
+
+| Hardware | 3CX-Modellbezeichnung | SIP-User-Agent | Yealink-Common-CFG |
+|---|---|---|---|
+| T40G | Yealink T40G | SIP-T40G | y100000000076.cfg |
+| T42G | Yealink T42 | SIP-T42G | y100000000029.cfg |
+| T46G | Yealink T46 | SIP-T46G | y100000000028.cfg |
+| T48G | Yealink T48 | SIP-T48G | y100000000035.cfg |
+
+Die `y100...`-Namen sind die für den 3CX-Custom-Template-Export geänderten
+`y000...`-Dateinamen, um Kollisionen mit der Originalvorlage zu vermeiden.
+Der Generator reserviert für diese Geräte Taste 1 als BLF `9001` über
+SIP-Account 2. Die ab Taste 2 von 3CX provisionierten Einstellungen bleiben
+modellabhängig erhalten. Es werden keine Callflow-Tasten fest vorbelegt.
+
+**Vorhandene Kunden/Telefone bleiben erhalten.** Beim Upgrade nur den
+GitHub-Code aktualisieren, in Dockhand das Docker-Image **neu bauen** und den
+Stack neu erstellen. Das persistente `asterisk-state`-Volume nicht löschen.
+Danach im Admin-Webinterface beim vorhandenen Kunden/Telefon die XML-Vorlage
+**neu herunterladen** und in der jeweiligen 3CX-Instanz hinterlegen.
+Bereits exportierte XML-Dateien aktualisieren sich nicht automatisch.
+
+Ältere G-Geräte sind in aktuellen 3CX-Versionen teils nicht mehr offiziell
+unterstützt; nach der Anpassung bitte zuerst an einer Testanlage die
+3CX-Modellauswahl sowie das tatsächliche Provisionieren des T46G prüfen.
+Ein Custom-Template kann je nach 3CX-Version und Bereitstellungsmodell
+zusätzliche Einschränkungen haben. Für manche Modelle kann eine
+Neuprovisionierung bzw. ein Werksreset nötig sein.
+
+
+## Version 1.2 – Telefon löschen, API-Key anzeigen und T4x-G-Serie
+
+- **Telefon löschen:** Unter Kunde → Telefone → **Verwalten / löschen** die
+  Details des Telefons öffnen. Den Abschnitt „Telefon dauerhaft löschen“
+  ausklappen, zur Bestätigung die SIP-Kennung eintippen und löschen.
+  Der SIP-Account wird aus Datenbank und generierter PJSIP-Konfiguration
+  entfernt und ein Asterisk-Reload ausgelöst. Exportierte XML-Dateien
+  enthalten weiterhin die früheren Zugangsdaten, die nach erfolgreichem
+  Reload keine gültige Registrierung mehr ermöglichen sollen.
+- **API-Key anzeigen:** Auf der Kundendetailseite „API-Schlüssel anzeigen“
+  ausklappen und das Admin-Passwort erneut eingeben. Der Schlüssel wird nur
+  auf der explizit angeforderten Antwortseite sichtbar; diese wird mit
+  `Cache-Control: no-store` ausgeliefert. Neukunden- und rotierte Schlüssel
+  werden verschlüsselt im SQLite-Volume gespeichert (Fernet/AES).
+- **Bestehende API-Keys:** Die alte Version hat ausschließlich SHA-256-Hashes
+  gespeichert; diese können nicht rückgängig gemacht werden. **Ausnahme:**
+  Ist der frühere `API_TOKEN` noch als Dockhand-Variable vorhanden und der
+  Hash stimmt überein, übernimmt das System diesen Wert verschlüsselt.
+  Anderenfalls für eine erneute Anzeige **einmalig rotieren**. Danach muss
+  der neue Schlüssel im betreffenden CFD hinterlegt werden.
+- **Verschlüsselungsschlüssel:** Bei erster Initialisierung wird
+  `/var/lib/asterisk/blf/.api-key-fernet.key` erstellt (Dateimodus 0600).
+  **Diesen Schlüssel zusammen mit dem Datenbank-Volume sichern.** Fehlt
+  er später und liegen verschlüsselte API-Schlüssel vor, startet die Anwendung
+  aus Sicherheitsgründen nicht mit einem neu erzeugten Schlüssel. Das
+  Volume und sein Backup dürfen nicht öffentlich zugänglich sein. Die
+  verschlüsselte Speicherung schützt nicht vor einem Angreifer, der
+  sowohl Datenbank als auch Schlüsseldatei kontrolliert.
+- **Python-Laufzeit:** Das Image enthält jetzt `python3-cryptography` aus
+  Ubuntu und testet den Import beim Docker-Build. Image in Dockhand neu
+  **bauen** und Stack **neu erstellen**. Die Compose-Datei muss nicht geändert
+  werden; das `asterisk-state`-Volume unbedingt beibehalten.
+- **Yealink T46G:** In der kundenspezifisch generierten Vorlage als Modell
+  **„Yealink T46 [BLF kundenkennung]“** verfügbar. Zusätzlich T42G als
+  „Yealink T42“, T48G als „Yealink T48“; T40G war bereits enthalten.
+  Bereits gespeicherte Kunden müssen die XML einfach neu herunterladen und
+  die aktualisierte Vorlage in der 3CX importieren. Taste 1 ist die
+  Status-BLF; übrige Tasten bleiben in 3CX konfigurierbar.
+
+**Sicherheitshinweis:** Der Zugang zum `/admin`-Interface sollte zusätzlich
+in Nginx durch VPN oder IP-Allowlist eingeschränkt werden. Die Möglichkeit,
+API-Schlüssel wieder anzuzeigen, ist bewusst nur für authentifizierte
+Administratoren nach erneuter Passwortprüfung implementiert.
