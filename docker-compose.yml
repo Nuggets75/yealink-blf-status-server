@@ -1,0 +1,28 @@
+# Git-Stack fuer Dockhand: Dockerfile-Build in Dockhand aktivieren.
+# Linux Docker-Host erforderlich (network_mode: host).
+services:
+  blf-asterisk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/yealink-blf-asterisk:20-lab
+    container_name: blf-asterisk
+    restart: unless-stopped
+    network_mode: host
+    init: true
+    environment:
+      SIP_PASSWORD: ${SIP_PASSWORD:?Bitte SIP_PASSWORD als Secret in Dockhand setzen}
+      SIP_PORT: ${SIP_PORT:-5062}
+      SIP_PUBLIC_IP: ${SIP_PUBLIC_IP:-}
+      SIP_LOCAL_NET: ${SIP_LOCAL_NET:-}
+    volumes:
+      - asterisk-state:/var/lib/asterisk
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  asterisk-state:
