@@ -101,6 +101,82 @@ class BLFTests(unittest.TestCase):
         self.assertIn('y100000000066.cfg',xml)
         self.cookie=None
         self.assertEqual(self.call('GET',f'/admin/phones/{pid}/template')[0],303)
+    def test_blf_label_default_customized_and_persisted(self):
+        self.login()
+        status,_,head=self.form('/admin/tenants/1/phone',{'label':'BLF Testtelefon'})
+        self.assertEqual(status,303)
+        pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
+        status,html,_=self.call('GET',f'/admin/phones/{pid}/settings')
+        self.assertEqual(status,200)
+        self.assertIn('name="blf_label" value="Status"',html)
+        status,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
+        self.assertEqual(status,200)
+        ET.fromstring(xml)
+        self.assertEqual(xml.count('linekey.1.label = Status'),4)
+        self.assertNotIn('linekey.1.label = Spontanschaltung',xml)
+        custom='Bereitschaft & Alarm <Test>'
+        status,xml,h=self.form(f'/admin/phones/{pid}/template',{'blf_label':custom})
+        self.assertEqual(status,200)
+        self.assertIn('attachment; filename=',h['Content-Disposition'])
+        ET.fromstring(xml)
+        self.assertEqual(xml.count('linekey.1.label = '+custom),4)
+        self.assertIn('linekey.2.value = %%type%%',xml)
+        with blf.conn() as db:
+            row=db.execute('SELECT blf_label FROM phones WHERE id=?',(pid,)).fetchone()
+            self.assertEqual(row['blf_label'],custom)
+        status,html,_=self.call('GET',f'/admin/phones/{pid}/settings')
+        self.assertEqual(status,200)
+        self.assertIn('name="blf_label" value="Bereitschaft &amp; Alarm &lt;Test&gt;"',html)
+        status,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
+        self.assertEqual(status,200)
+        self.assertIn('linekey.1.label = '+custom,xml)
+        self.assertEqual(self.api(os.environ['API_TOKEN'],1)[0],200)
+
+    def test_blf_label_is_validated_and_protected_by_csrf(self):
+        from urllib.parse import urlencode
+        self.login()
+        status,_,head=self.form('/admin/tenants/1/phone',{'label':'Security test'})
+        pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
+        uri=f'/admin/phones/{pid}/template'
+        for value in ('', 'X'*41, 'X\nlinekey.1.line = 1', 'ABC]]>XYZ', '\x00'):
+            self.assertEqual(self.form(uri, {'blf_label':value})[0],400)
+        payload=urlencode({'blf_label':'Changed'})
+        self.assertEqual(self.call('POST',uri,payload,{'Content-Type':'application/x-www-form-urlencoded'})[0],403)
+        with blf.conn() as db:
+            self.assertEqual(db.execute('SELECT blf_label FROM phones WHERE id=?',(pid,)).fetchone()[0],'Status')
+        self.cookie=None
+        self.assertEqual(self.call('POST',uri,payload,{'Content-Type':'application/x-www-form-urlencoded'})[0],303)
+
+    def test_blf_label_independent_per_phone(self):
+        self.login()
+        ids=[]
+        for name in ('Telefon A','Telefon B'):
+            status,_,head=self.form('/admin/tenants/1/phone',{'label':name})
+            self.assertEqual(status,303)
+            ids.append(int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1)))
+        status,xml,_=self.form(f'/admin/phones/{ids[0]}/template',{'blf_label':'Notbetrieb'})
+        self.assertEqual(status,200)
+        status,xml,_=self.call('GET',f'/admin/phones/{ids[1]}/template')
+        self.assertEqual(status,200)
+        self.assertEqual(xml.count('linekey.1.label = Status'),4)
+        self.assertNotIn('linekey.1.label = Notbetrieb',xml)
+
+    def test_blf_label_migration_of_legacy_phones(self):
+        self.login()
+        # Simulate the v1.3 phones table while preserving SIP logins.
+        with blf.conn() as db:
+            original=db.execute('SELECT id,sip_user,sip_password FROM phones ORDER BY id').fetchall()
+            db.execute("CREATE TABLE old_phones (id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id), label TEXT NOT NULL, sip_user TEXT NOT NULL UNIQUE, sip_password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)")
+            db.execute("INSERT INTO old_phones SELECT id,tenant_id,label,sip_user,sip_password,active,created_at FROM phones")
+            db.execute('DROP TABLE phones')
+            db.execute('ALTER TABLE old_phones RENAME TO phones')
+        blf.db_init()
+        with blf.conn() as db:
+            after=db.execute('SELECT id,sip_user,sip_password,blf_label FROM phones ORDER BY id').fetchall()
+        self.assertEqual([(x['id'],x['sip_user'],x['sip_password']) for x in original],
+                         [(x['id'],x['sip_user'],x['sip_password']) for x in after])
+        self.assertTrue(all(x['blf_label']=='Status' for x in after))
+
     def test_token_rotation_revokes_old(self):
         self.login()
         old=os.environ['API_TOKEN']

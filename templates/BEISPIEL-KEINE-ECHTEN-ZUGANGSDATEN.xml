@@ -4991,7 +4991,7 @@ linekey.1.value = 9001
 linekey.1.type = 16
 linekey.1.pickup_value =
 linekey.1.extension =
-linekey.1.label = Spontanschaltung
+linekey.1.label = Status
 {ELSE}
 #Configure Line Key1
 {IF blf1}
@@ -5421,7 +5421,7 @@ linekey.1.value = 9001
 linekey.1.type = 16
 linekey.1.pickup_value =
 linekey.1.extension =
-linekey.1.label = Spontanschaltung
+linekey.1.label = Status
 #Configure Line Key2
 {IF blf2}
 linekey.2.line = %%Line%%
@@ -5718,7 +5718,7 @@ linekey.1.value = 9001
 linekey.1.type = 16
 linekey.1.pickup_value =
 linekey.1.extension =
-linekey.1.label = Spontanschaltung
+linekey.1.label = Status
 {ELSE}
 #Configure Line Key1
 {IF blf1}
@@ -5896,7 +5896,7 @@ linekey.1.value = 9001
 linekey.1.type = 16
 linekey.1.pickup_value =
 linekey.1.extension =
-linekey.1.label = Spontanschaltung
+linekey.1.label = Status
 {ELSE}
 #Configure Line Key1
 {IF blf1}

@@ -1,6 +1,6 @@
 # Yealink BLF Control Center – zentraler Multi-Tenant-Statusserver
 
-Version: **1.0 Test-/Pilotversion** · ein Asterisk mit PJSIP, Python-API und browserbasierter Kundenverwaltung · keine Verbindung *vom Server zur 3CX*.
+Version: **1.4 Test-/Pilotversion** · ein Asterisk mit PJSIP, Python-API und browserbasierter Kundenverwaltung · keine Verbindung *vom Server zur 3CX*.
 
 ## Funktionsprinzip
 
@@ -86,7 +86,7 @@ Sicherheitsmaßnahmen: Admin-Zugriff auf `/admin` über Nginx nach Möglichkeit 
 2. **Neuen Kunden anlegen** (`name`, eindeutige `slug`-Kennung). Standardstatus `spontanschaltung` mit BLF-Nummer `9001` wird automatisch eingerichtet.
 3. API-Schlüssel nach der Anlage sicher verwahren. Bei Schlüsseln aus Version 1.2 kann er später nach erneuter Admin-Passwortprüfung unter **API-Schlüssel anzeigen** eingesehen werden. Schlüssel aus der alten Version lassen sich nur anzeigen, wenn der frühere `API_TOKEN` noch bekannt ist; sonst einmalig **API-Schlüssel neu erzeugen** verwenden (alter Schlüssel verliert dann sofort seine Gültigkeit).
 4. Ein **Telefon hinzufügen**, Bezeichnung eingeben. Das neue SIP-Konto wird serverseitig erzeugt und Asterisk neu geladen.
-5. Unter dem Telefon **SIP-Daten** einsehen; dort auch die **kundenspezifische 3CX-XML-Vorlage** herunterladen.
+5. Unter dem Telefon **BLF-Label / XML herunterladen** auswählen; dort das Feld **Beschriftung der Status-BLF (Taste 1)** anpassen (Standard `Status`) und **Label speichern und 3CX-XML herunterladen** klicken. Das Label wird für dieses Telefon gespeichert und beim nächsten Export erneut vorgeschlagen.
 6. Kunden bei Bedarf deaktivieren, zusätzliche Statusressourcen (z. B. `notbetrieb`, BLF `9002`) hinzufügen und aktuelle Zustände im Webinterface überprüfen.
 
 **Wichtig:** Der Template-Download ist personalisiert und enthält das SIP-Passwort für Account 2. **Nicht auf öffentliches GitHub hochladen**, nicht unverschlüsselt versenden.
@@ -97,11 +97,11 @@ Die beigefügte Originalvorlage `templates/source-yealinkT4x.ph.xml` stammt aus 
 
 - unverändertem Account 1 (3CX)
 - einem für dieses Telefon individuellen Account 2 mit SIP-Domain aus `SIP_HOST` und Port 5062
-- **physischer Taste 1**: `linekey.1.type=16`, `linekey.1.line=2`, `linekey.1.value=9001`, Label `Spontanschaltung`
+- **physischer Taste 1**: `linekey.1.type=16`, `linekey.1.line=2`, `linekey.1.value=9001`, Label `Status` (je Telefon editierbar vor dem Download)
 - **Tasten 2 ff.**: unveränderte 3CX-DSS-Belegungen
 - eigenem Vorlagennamen und abgewandelten Yealink-y-Dateinamen (`y100...`) gegenüber der Standardvorlage
 
-Die Tastenerweiterung greift derzeit auf die in der hochgeladenen Vorlage zusammengefasste Modellgruppe `SIP-T44U`, `SIP-T44W`, `SIP-T46S`, `SIP-T46U`, `SIP-T54W`. Für andere Modelle wird aktuell **keine** Status-Taste reserviert – Anpassung vor dem produktiven Einsatz erforderlich.
+Die Taste-1-Belegung umfasst die T46S/T54W-Modellgruppe sowie T40G, T42G, T46G (Modellname in 3CX: Yealink T46) und T48G. Weitere Modelle bitte vor Einsatz in der erzeugten 3CX-Provisionierung gezielt pruefen.
 
 **Einbindung in 3CX:** Nach 3CX-Anleitung ein Custom Phone Template für den jeweiligen Kunden anlegen und das personalisierte XML als Basis verwenden, z. B. unter dem vorgesehenen `CustomTemplates/phones/`-Verzeichnis auf einer selbst verwalteten Installation. Bei einer per 3CX-UI erzeugten Vorlagenkopie beachten, dass Namen, Modelle und y-Dateinamen zueinander passen. Je nach 3CX-Edition/Hosting kann der Zugriff auf die Vorlagen eingeschränkt sein. Das **Ändern eines Custom Templates hebt die normale 3CX-Unterstützung für das Telefon teilweise auf**. Vor Einsatz immer `View Configuration` kontrollieren und eine gezielte Reprovisionierung **nur eines Testtelefons** durchführen. Die `y100...` Dateinamen müssen pro PBX eindeutig sein und gegebenenfalls angepasst werden, falls andere Custom Templates sie bereits verwenden.
 
@@ -289,3 +289,22 @@ Backups und externe Logs bleiben unabhängig von der Datenbanklöschung erhalten
 Eine zusätzliche Migrationssperre verhindert, dass beim Löschen des letzten
 Kunden die frühere Testanlage nach einem Container-Neustart durch noch gesetzte
 `SIP_PASSWORD` / `API_TOKEN` Variablen automatisch erneut angelegt wird.
+
+## Version 1.4 - BLF-Tastenlabel anpassen
+
+Beim kundenbezogenen Telefonexport kann das **Label der Status-BLF auf Taste 1**
+vor dem Download bearbeitet werden. Voreinstellung fuer neue und bisherige Telefone: `Status`.
+Die Schaltlogik, Nebenstelle 9001, Account 2 und alle 3CX-Tasten ab Position 2
+werden nicht veraendert.
+
+- Kunde oeffnen, Telefon waehlen und **BLF-Label / XML herunterladen** auswaehlen.
+- Unter **Beschriftung der Status-BLF (Taste 1)** einen Text eingeben.
+- **Label speichern und 3CX-XML herunterladen** klicken. Das Label wird
+  je Telefon dauerhaft gespeichert; es kann bei einem spaeteren Export
+  erneut angepasst werden.
+- Maximal 40 druckbare Zeichen; Zeilenumbrueche sind unzulaessig.
+- Nach dem Import der geaenderten XML-Vorlage in 3CX das Telefon neu
+  provisionieren, damit das Label auf dem Yealink sichtbar wird.
+
+Beim Update von v1.3 migriert die Datenbank automatisch. Alle Kunden,
+Telefone, API-Schluessel und SIP-Zugangsdaten bleiben erhalten.

@@ -136,7 +136,7 @@ def db_init():
         CREATE TABLE IF NOT EXISTS phones (
           id INTEGER PRIMARY KEY, tenant_id INTEGER NOT NULL REFERENCES tenants(id),
           label TEXT NOT NULL, sip_user TEXT NOT NULL UNIQUE,
-          sip_password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+          sip_password TEXT NOT NULL, blf_label TEXT NOT NULL DEFAULT 'Status', active INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS api_keys (
           tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id), token_hash TEXT NOT NULL UNIQUE);
@@ -150,6 +150,10 @@ def db_init():
         columns = {row['name'] for row in db.execute('PRAGMA table_info(api_keys)')}
         if 'token_ciphertext' not in columns:
             db.execute('ALTER TABLE api_keys ADD COLUMN token_ciphertext TEXT')
+        # Schema migration for existing v1.3 phones: preserve all SIP data.
+        phone_columns = {row['name'] for row in db.execute('PRAGMA table_info(phones)')}
+        if 'blf_label' not in phone_columns:
+            db.execute("ALTER TABLE phones ADD COLUMN blf_label TEXT NOT NULL DEFAULT 'Status'")
         ensure_encryption_key(db)
         db.execute('PRAGMA journal_mode=WAL')
         if not db.execute("SELECT 1 FROM settings WHERE key='admin_hash'").fetchone():
@@ -325,10 +329,24 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
     out += f'</table><details style="margin-top:18px"><summary>Status hinzufügen (max. 3 empfohlen)</summary><form method="post" action="/admin/tenants/{tid}/status">{csrf}<label>Interne Bezeichnung (a-z, 0-9, -)</label><input name="slug" required pattern="[a-z][a-z0-9-]{{1,30}}" placeholder="notbetrieb"><label>BLF-Nebenstelle</label><input type="number" name="extension" required min="100" max="99999" placeholder="9002"><p><button>Status anlegen</button></p></form></details></section>'
     out += '<section class="card"><h2>Telefone</h2><p class="sub">Jedes Telefon erhält individuelle SIP-Zugangsdaten. Der Export enthält diese vertraulichen Werte und muss geschützt behandelt werden.</p><table><tr><th>Bezeichnung</th><th>SIP-Konto</th><th>3CX-Telefonvorlage</th><th>Aktiv</th><th>Verwalten</th></tr>'
     for p in phones:
-        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/template">XML herunterladen</a> · <a href="/admin/phones/{p["id"]}/settings">SIP-Daten</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td><td><a href="/admin/phones/{p["id"]}/settings">Verwalten / löschen</a></td></tr>'
+        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/settings">BLF-Label / XML herunterladen</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td><td><a href="/admin/phones/{p["id"]}/settings">Verwalten / löschen</a></td></tr>'
     out += f'</table><form method="post" action="/admin/tenants/{tid}/phone">{csrf}<label>Telefonbezeichnung</label><input name="label" maxlength="80" required placeholder="Empfang T54W"><p><button>Telefon anlegen</button></p></form></section>'
     out += '<p class="muted">3CX-Kontakt: Der Server verbindet sich niemals mit einer 3CX-Anlage. Ausschließlich CFD → HTTPS-API und Telefon → SIP sind erforderlich.</p>'
     return page(tenant['name'], out, csrf)
+
+
+def validate_blf_label(value):
+    # One Yealink .cfg assignment per label. Disallow control characters and
+    # the CDATA terminator; otherwise an attacker could break the 3CX XML.
+    import unicodedata
+    if not isinstance(value, str):
+        raise ValueError('BLF-Label muss Text sein')
+    value = value.strip()
+    if not 1 <= len(value) <= 40 or ']]>' in value:
+        raise ValueError('BLF-Label muss 1 bis 40 Zeichen enthalten und darf kein CDATA-Ende sein')
+    if any(unicodedata.category(ch).startswith('C') for ch in value):
+        raise ValueError('BLF-Label darf keine Steuerzeichen enthalten')
+    return value
 
 
 def build_template(phone, tenant, sip_host, sip_port):
@@ -344,7 +362,7 @@ def build_template(phone, tenant, sip_host, sip_port):
                   "linekey.1.type = 16\n"
                   "linekey.1.pickup_value =\n"
                   "linekey.1.extension =\n"
-                  "linekey.1.label = Spontanschaltung\n")
+                  f'linekey.1.label = {validate_blf_label(phone["blf_label"])}\n')
     groups = (
         ('{IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}', None),
         ('{IF ua=SIP-T23P,SIP-T23G,SIP-T40G,SIP-T40P}', 'SIP-T40G'),
@@ -523,9 +541,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(p['tenant_id'],)).fetchone()
                 if m.group(2)=='template':
                     try: content=build_template(p,t,SIP_HOST,SIP_PORT)
-                    except (OSError,RuntimeError) as ex: self.error(500,str(ex));return
+                    except (OSError,RuntimeError,ValueError) as ex: self.error(500,str(ex));return
                     self.output(200,content,'application/xml; charset=utf-8',{'Content-Disposition':f'attachment; filename="blf-{t["slug"]}-{p["id"]}.xml"'});return
-                out=f'<p><a href="/admin/tenants/{t["id"]}">← Kunde</a></p><h1>{e(p["label"])}</h1><div class="card"><h2>SIP-Konto 2</h2><p>Server: <code>{e(SIP_HOST)}:{SIP_PORT}/UDP</code></p><p>Benutzer / Auth-Name: <code>{e(p["sip_user"])}</code></p><p>Passwort:</p><div class="secret">{e(p["sip_password"])}</div><p><a class="button" href="/admin/phones/{p["id"]}/template">Kundenspezifische 3CX-XML laden</a></p><p class="muted">Vertraulich: XML enthält SIP-Zugangsdaten und gehört nicht ins öffentliche GitHub.</p></div>'
+                out=f'<p><a href="/admin/tenants/{t["id"]}">← Kunde</a></p><h1>{e(p["label"])}</h1><div class="card"><h2>SIP-Konto 2</h2><p>Server: <code>{e(SIP_HOST)}:{SIP_PORT}/UDP</code></p><p>Benutzer / Auth-Name: <code>{e(p["sip_user"])}</code></p><p>Passwort:</p><div class="secret">{e(p["sip_password"])}</div><form method="post" action="/admin/phones/{p["id"]}/template">{csrf_field(session)}<label>Beschriftung der Status-BLF (Taste 1)</label><input name="blf_label" value="{e(p["blf_label"])}" maxlength="40" required><p><button type="submit">Label speichern und 3CX-XML herunterladen</button></p></form><p class="muted">Voreinstellung: Status. Die Beschriftung wird pro Telefon gespeichert.</p><p class="muted">Vertraulich: XML enthält SIP-Zugangsdaten und gehört nicht ins öffentliche GitHub.</p></div>'
                 out += (f'<div class="card"><details><summary>Telefon dauerhaft löschen</summary>'
                         '<p class="sub">Das SIP-Konto wird aus der aktiven Asterisk-Konfiguration entfernt. Ein Export dieser XML wird anschließend nicht mehr möglich sein.</p>'
                         f'<form method="post" action="/admin/phones/{p["id"]}/delete">{csrf_field(session)}'
@@ -666,6 +684,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except RuntimeError: self.error(503,'Asterisk nicht erreichbar');return
                     if result is None: self.error(404,'Status nicht gefunden oder Kunde deaktiviert');return
                     self.redirect(f'/admin/tenants/{tid}');return
+            m=re.fullmatch(r'/admin/phones/(\d+)/template',path)
+            if m:
+                pid = int(m.group(1))
+                p = db.execute('SELECT * FROM phones WHERE id=?', (pid,)).fetchone()
+                if not p: self.error(404, 'Telefon nicht gefunden');return
+                t = db.execute('SELECT * FROM tenants WHERE id=?', (p['tenant_id'],)).fetchone()
+                try:
+                    label = validate_blf_label(f.get('blf_label', ''))
+                    export_phone = dict(p)
+                    export_phone['blf_label'] = label
+                    content = build_template(export_phone, t, SIP_HOST, SIP_PORT)
+                except ValueError as ex:
+                    self.error(400, str(ex));return
+                except (OSError, RuntimeError) as ex:
+                    self.error(500, str(ex));return
+                db.execute('UPDATE phones SET blf_label=? WHERE id=?', (label, pid))
+                db.commit()
+                self.output(200, content, 'application/xml; charset=utf-8',
+                            {'Content-Disposition':f'attachment; filename="blf-{t["slug"]}-{p["id"]}.xml"'})
+                return
             m=re.fullmatch(r'/admin/phones/(\d+)/(active|delete)',path)
             if m:
                 pid=int(m.group(1));p=db.execute('SELECT * FROM phones WHERE id=?',(pid,)).fetchone()
