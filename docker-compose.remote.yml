@@ -1,0 +1,33 @@
+# Yealink BLF Status Server - Dockhand (manuell verwalteter Stack)
+# Build-Kontext wird aus einem OEFFENTLICHEN GitHub-Repository geladen.
+# DEIN-USERNAME durch den GitHub-Namen ersetzen; Branch main muss existieren.
+# Das Repo muss Dockerfile, config/ und scripts/ im Wurzelverzeichnis enthalten.
+# Bei PRIVATEN Repositories stattdessen einen Dockhand-Git-Stack verwenden
+# und build.context auf "." setzen (Git-Zugangsdaten in Dockhand hinterlegen).
+services:
+  blf-asterisk:
+    build:
+      context: "https://github.com/DEIN-USERNAME/yealink-blf-status-server.git#main"
+      dockerfile: Dockerfile
+    image: local/yealink-blf-asterisk:20-lab
+    pull_policy: build
+    container_name: blf-asterisk
+    restart: unless-stopped
+    network_mode: host
+    init: true
+    environment:
+      SIP_PASSWORD: "${SIP_PASSWORD:?SIP_PASSWORD_fehlt}"
+      SIP_PORT: "${SIP_PORT:-5062}"
+      SIP_PUBLIC_IP: "${SIP_PUBLIC_IP:-}"
+      SIP_LOCAL_NET: "${SIP_LOCAL_NET:-}"
+    volumes:
+      - asterisk-state:/var/lib/asterisk
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  asterisk-state:

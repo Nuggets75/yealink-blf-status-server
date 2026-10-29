@@ -9,6 +9,7 @@ Ein Git-faehiger Docker-Testaufbau fuer **ein Yealink T46S/T54W** mit bereits vo
 ```text
 .
 ├── docker-compose.yml
+├── docker-compose.remote.yml
 ├── Dockerfile
 ├── config/
 │   ├── extensions.conf
@@ -22,6 +23,17 @@ Ein Git-faehiger Docker-Testaufbau fuer **ein Yealink T46S/T54W** mit bereits vo
 
 Die `pjsip.conf` wird **erst beim Containerstart** aus den Dockhand-Umgebungsvariablen erzeugt. So gelangt kein echtes SIP-Passwort ins Git-Repository. Die Konfigurationen werden ins Docker-Image kopiert: Es gibt keine relativen Bind-Mounts, die beim Dockhand-Git-Deployment Probleme bereiten koennten.
 
+## WICHTIG: Zwei Dockhand-Betriebsarten
+
+Das Repository enthaelt **zwei** Compose-Dateien fuer unterschiedliche Dockhand-Setups:
+
+1. **`docker-compose.remote.yml`**: Fuer einen **normalen/manuellen Dockhand-Stack**, bei dem du die Compose-Datei im Editor einfuegst, ohne Git-Stack-Funktion. Vorher `DEIN-USERNAME` in der GitHub-URL ersetzen; Repository muss ohne zusaetzliche Git-Zugangsdaten abrufbar sein (normalerweise **oeffentlich**). Im Dockhand-Editor den Inhalt von `docker-compose.remote.yml` einfuegen. Docker holt bei jedem Build den Kontext mit `Dockerfile`, `config/` und `scripts/` aus GitHub. Du musst diese Dateien **nicht manuell auf dem Host ablegen**. `pull_policy: build` weist Compose zum Image-Build an, soweit die verwendete Compose-Version dies unterstuetzt.
+2. **`docker-compose.yml`**: Fuer einen **richtigen Dockhand-Git-Stack**, bei dem Dockhand das Repository mit Git-Zugangsdaten auscheckt. Hier ist `build.context: .` richtig, und Docker findet das `Dockerfile` innerhalb des ausgecheckten Repositorys. Git-Stacks koennen auch private Repositories nutzen, wenn Dockhand Zugriff hat. `Build images on deploy` einschalten.
+
+**Nicht verwechseln:** `build.context: .` funktioniert nicht im manuellen Dockhand-Editor, wenn neben der von Dockhand verwalteten Compose-Datei keine `Dockerfile` liegt. Umgekehrt muss bei der Remote-Datei der GitHub-Nutzername angepasst werden. Beide Varianten benoetigen `SIP_PASSWORD` als Umgebungsvariable/Secret in Dockhand.
+
+Die Dateien bleiben bei beiden Varianten in GitHub; Git/Docker holen sie fuer den Build automatisch herunter. Es sind keine manuellen Host-Dateikopien notwendig.
+
 ## Voraussetzungen
 
 - Linux-Docker-Host (fuer `network_mode: host`), auf dem UDP **5062** frei ist.
@@ -32,7 +44,7 @@ Die `pjsip.conf` wird **erst beim Containerstart** aus den Dockhand-Umgebungsvar
 
 **Achtung:** Das hier ist ein SIP-Testdienst, kein Reverse-Proxy-faeiger HTTP-Dienst. Docker-Host-Networking bedeutet: `ports:` nicht angeben; die Host-Firewall ist fuer den Schutz des Dienstes verantwortlich.
 
-## GitHub und Dockhand
+## GitHub und Dockhand (Git-Stack-Variante)
 
 1. Neues GitHub-Repository anlegen, zum Beispiel `yealink-blf-asterisk-lab` (bevorzugt privat).
 2. Den **Inhalt dieses Ordners** in das Wurzelverzeichnis des Repositories hochladen, mit den Unterordnern `config/` und `scripts/`. Keine echten Passwoerter committen.
