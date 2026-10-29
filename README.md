@@ -178,3 +178,17 @@ python3 -m unittest discover -s tests -v
 Das Paket hat automatisierte Testfälle für Login, CSRF, Tenant-API-Isolation, Token-Rotation, Migration und XML-Export. **Ein Docker-Build, der echte Asterisk-Prozess sowie eine 3CX-End-to-End-Provisionierung wurden in dieser Umgebung nicht getestet.** Deshalb zuerst in einer Testanlage deployen und überwachen; nicht unmittelbar an 100 Anlagen ausrollen.
 
 Asterisk-Prozesse nutzen auch im Leerlauf CPU für SIP-Registrierungen, Timer und Watcher. 1–2 % können bei der aktuellen Testanlage normal sein; vor Rollout Last mit ca. 100 SIP-Konten messen, auch nach stündlichen Statuswechseln. SQLite und ein einzelner Docker-Host sind für diese Größenordnung plausibel, aber noch nicht lastgetestet oder hochverfügbar. Datenbankvolumen regelmäßig sichern, Wiederherstellung üben. Langfristig empfehlen sich rollenbasierte Admin-Logins, zweite Administratoren/MFA, TLS für SIP, Audit-Anzeige, IP-Rate-Limiting am Proxy und echte HA-Tests.
+
+## Update 1.0.1 – Fix fehlendes Python-Standardmodul `hmac`
+
+Die erste Multi-Tenant-Dockerfile installierte `python3-minimal`. Unter Ubuntu 24.04
+fehlen dadurch fuer diese Anwendung erforderliche Standardbibliotheksmodule wie
+`hmac`. Die Dockerfile installiert jetzt das vollstaendige Ubuntu-Paket `python3`.
+Ein Import-Smoke-Test im Docker-Build prueft die benoetigten Module.
+
+**Vorgehen fuer bestehende Dockhand-Stacks:** Die korrigierte `Dockerfile` nach
+GitHub committen (alle anderen Dateien koennen bleiben). In Dockhand einen
+**neuen Build des Images** starten und danach den Container neu erstellen.
+Ein Container-Neustart ohne neuen Image-Build behebt den Fehler **nicht**.
+Die `docker-compose.remote.yml` und alle bestehenden Umgebungsvariablen koennen
+unveraendert bleiben. Das persistente `asterisk-state`-Volume nicht loeschen.
