@@ -367,7 +367,7 @@ class BLFTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT count(*) FROM phones').fetchone()[0],0)
         self.assertEqual(self.api(os.environ['API_TOKEN'],1)[0],401)
 
-    def test_status_layout_multiple_keys_and_3cx_dial_keys(self):
+    def test_status_layout_multiple_keys_but_no_extra_dial_key(self):
         self.login()
         status,_,head=self.form('/admin/tenants/1/phone',{'label':'Reception T46S'})
         pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
@@ -379,16 +379,23 @@ class BLFTests(unittest.TestCase):
         s,_,_=self.form('/admin/tenants/1/status',{'slug':'feiertag','display_label':'Feiertag',
                              'blf_key':'2','callflow':'952','callflow_key':'4'})
         self.assertEqual(s,303)
+        s,html,_=self.call('GET','/admin/tenants/1')
+        self.assertEqual(s,200)
+        self.assertNotIn('Separate 3CX-Anruftaste',html)
+        self.assertNotIn('name="callflow_key"',html)
         s,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
         self.assertEqual(s,200)
         ET.fromstring(xml)
         for line in ('linekey.5.line = 2','linekey.5.value = 9001','linekey.5.label = Notbetrieb',
                      'linekey.2.value = 9002','linekey.2.label = Feiertag',
-                     'linekey.8.line = 1','linekey.8.type = 13','linekey.8.value = 951',
-                     'linekey.4.line = 1','linekey.4.value = 952',
                      'linekey.3.value = %%type%%','account.1.sip_server.1.address = %%pbx_ip%%'):
             self.assertIn(line,xml)
-        # The added CFD status is independent of the caller's key mapping.
+        self.assertNotIn('linekey.8.value = 951',xml)
+        self.assertNotIn('linekey.4.value = 952',xml)
+        with blf.conn() as db:
+            values=db.execute('SELECT callflow,callflow_key FROM status_items WHERE tenant_id=1 ORDER BY extension').fetchall()
+            self.assertEqual([r['callflow'] for r in values],['951','952'])
+            self.assertTrue(all(r['callflow_key'] is None for r in values))
         self.assertIn('9002,hint,Custom:blf_t1_feiertag',blf.EXT_PATH.read_text())
         self.assertEqual(self.api(os.environ['API_TOKEN'],1,'/v1/status/feiertag')[0],200)
 
@@ -398,25 +405,34 @@ class BLFTests(unittest.TestCase):
             sid=db.execute("SELECT id FROM status_items WHERE tenant_id=1 AND slug='spontanschaltung'").fetchone()[0]
         url='/admin/tenants/1/layout'
         for changes in (
-            {'blf_key':'0'}, {'blf_key':'28'}, {'blf_key':'2','callflow_key':'2','callflow':'951'},
-            {'blf_key':'1','callflow_key':'4'}, {'blf_key':'1','callflow':'9\nlinekey.2.line = 2'},
+            {'blf_key':'0'}, {'blf_key':'28'},
+            {'blf_key':'1','callflow':'9\nlinekey.2.line = 2'},
             {'blf_key':'1','display_label':'Bad]]>foo'},
         ):
-            params={'status_id':str(sid),'display_label':'Status','blf_key':'1',
-                    'callflow':'','callflow_key':''}
+            params={'status_id':str(sid),'display_label':'Status','blf_key':'1','callflow':''}
             params.update(changes)
             self.assertEqual(self.form(url,params)[0],400,params)
         self.assertEqual(self.form('/admin/tenants/1/status',
                           {'slug':'feiertag','display_label':'Feiertag','blf_key':'1'})[0],400)
-        s,_,_=self.form('/admin/tenants/1/status',
-                          {'slug':'feiertag','display_label':'Feiertag','blf_key':'2'})
-        self.assertEqual(s,303)
+        self.assertEqual(self.form('/admin/tenants/1/status',
+                          {'slug':'feiertag','display_label':'Feiertag','blf_key':'2'})[0],303)
         self.assertEqual(self.form('/admin/tenants/1/layout',{'status_id':str(sid),
-                          'display_label':'Status','blf_key':'2','callflow':'','callflow_key':''})[0],400)
+                          'display_label':'Status','blf_key':'2','callflow':''})[0],400)
         with blf.conn() as db:
             row=db.execute('SELECT blf_key,callflow,callflow_key FROM status_items WHERE id=?',(sid,)).fetchone()
             self.assertEqual(row['blf_key'],1)
             self.assertFalse(row['callflow'])
+            self.assertIsNone(row['callflow_key'])
+
+    def test_legacy_second_dial_key_dropped_after_restart(self):
+        with blf.conn() as db:
+            db.execute("UPDATE status_items SET callflow_key=8,callflow='951' WHERE tenant_id=1 AND extension=9001")
+            db.commit()
+        blf.db_init()
+        with blf.conn() as db:
+            row=db.execute('SELECT blf_key,callflow,callflow_key FROM status_items WHERE tenant_id=1 AND extension=9001').fetchone()
+            self.assertEqual(row['blf_key'],1)
+            self.assertEqual(row['callflow'],'951')
             self.assertIsNone(row['callflow_key'])
 
     def test_auto_blf_extension_per_tenant_and_no_global_collision(self):
@@ -439,14 +455,14 @@ class BLFTests(unittest.TestCase):
             sid=db.execute("SELECT id FROM status_items WHERE tenant_id=1 AND slug='spontanschaltung'").fetchone()[0]
         self.assertEqual(self.form('/admin/tenants/1/layout',
                           {'status_id':str(sid),'display_label':'Status','blf_key':'26',
-                           'callflow':'951','callflow_key':'27'})[0],303)
+                           'callflow':'951'})[0],303)
         status,_,head=self.form('/admin/tenants/1/phone',{'label':'Model export'})
         pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
         status,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
         self.assertEqual(status,200)
         ET.fromstring(xml)
         self.assertIn('linekey.26.value = 9001',xml)
-        self.assertIn('linekey.27.value = 951',xml)
+        self.assertNotIn('linekey.27.value = 951',xml)
         self.assertIn('{IF ua=SIP-T40G}',xml) if 'linekey.1.value = 9001' in xml else None
 
 if __name__=='__main__': unittest.main()
