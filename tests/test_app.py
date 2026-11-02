@@ -367,4 +367,86 @@ class BLFTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT count(*) FROM phones').fetchone()[0],0)
         self.assertEqual(self.api(os.environ['API_TOKEN'],1)[0],401)
 
+    def test_status_layout_multiple_keys_and_3cx_dial_keys(self):
+        self.login()
+        status,_,head=self.form('/admin/tenants/1/phone',{'label':'Reception T46S'})
+        pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
+        with blf.conn() as db:
+            sid=db.execute("SELECT id FROM status_items WHERE tenant_id=1 AND slug='spontanschaltung'").fetchone()[0]
+        s,_,_=self.form('/admin/tenants/1/layout',{'status_id':str(sid),'display_label':'Notbetrieb',
+                             'blf_key':'5','callflow':'951','callflow_key':'8'})
+        self.assertEqual(s,303)
+        s,_,_=self.form('/admin/tenants/1/status',{'slug':'feiertag','display_label':'Feiertag',
+                             'blf_key':'2','callflow':'952','callflow_key':'4'})
+        self.assertEqual(s,303)
+        s,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
+        self.assertEqual(s,200)
+        ET.fromstring(xml)
+        for line in ('linekey.5.line = 2','linekey.5.value = 9001','linekey.5.label = Notbetrieb',
+                     'linekey.2.value = 9002','linekey.2.label = Feiertag',
+                     'linekey.8.line = 1','linekey.8.type = 13','linekey.8.value = 951',
+                     'linekey.4.line = 1','linekey.4.value = 952',
+                     'linekey.3.value = %%type%%','account.1.sip_server.1.address = %%pbx_ip%%'):
+            self.assertIn(line,xml)
+        # The added CFD status is independent of the caller's key mapping.
+        self.assertIn('9002,hint,Custom:blf_t1_feiertag',blf.EXT_PATH.read_text())
+        self.assertEqual(self.api(os.environ['API_TOKEN'],1,'/v1/status/feiertag')[0],200)
+
+    def test_invalid_status_layout_collision_and_never_write_bad_xml(self):
+        self.login()
+        with blf.conn() as db:
+            sid=db.execute("SELECT id FROM status_items WHERE tenant_id=1 AND slug='spontanschaltung'").fetchone()[0]
+        url='/admin/tenants/1/layout'
+        for changes in (
+            {'blf_key':'0'}, {'blf_key':'28'}, {'blf_key':'2','callflow_key':'2','callflow':'951'},
+            {'blf_key':'1','callflow_key':'4'}, {'blf_key':'1','callflow':'9\nlinekey.2.line = 2'},
+            {'blf_key':'1','display_label':'Bad]]>foo'},
+        ):
+            params={'status_id':str(sid),'display_label':'Status','blf_key':'1',
+                    'callflow':'','callflow_key':''}
+            params.update(changes)
+            self.assertEqual(self.form(url,params)[0],400,params)
+        self.assertEqual(self.form('/admin/tenants/1/status',
+                          {'slug':'feiertag','display_label':'Feiertag','blf_key':'1'})[0],400)
+        s,_,_=self.form('/admin/tenants/1/status',
+                          {'slug':'feiertag','display_label':'Feiertag','blf_key':'2'})
+        self.assertEqual(s,303)
+        self.assertEqual(self.form('/admin/tenants/1/layout',{'status_id':str(sid),
+                          'display_label':'Status','blf_key':'2','callflow':'','callflow_key':''})[0],400)
+        with blf.conn() as db:
+            row=db.execute('SELECT blf_key,callflow,callflow_key FROM status_items WHERE id=?',(sid,)).fetchone()
+            self.assertEqual(row['blf_key'],1)
+            self.assertFalse(row['callflow'])
+            self.assertIsNone(row['callflow_key'])
+
+    def test_auto_blf_extension_per_tenant_and_no_global_collision(self):
+        self.login()
+        status,body,_=self.form('/admin/tenants',{'name':'Other','slug':'other'})
+        self.assertEqual(status,200)
+        t2=int(re.search(r'Kennung: other · ID: (\d+)',body).group(1))
+        for tid in (1,t2):
+            self.assertEqual(self.form(f'/admin/tenants/{tid}/status',
+                            {'slug':'alarm','display_label':'Alarm','blf_key':'2'})[0],303)
+        with blf.conn() as db:
+            results=db.execute("SELECT tenant_id,extension FROM status_items WHERE slug='alarm' ORDER BY tenant_id").fetchall()
+            self.assertEqual([r['extension'] for r in results],[9002,9002])
+        self.assertIn('9002,hint,Custom:blf_t1_alarm',blf.EXT_PATH.read_text())
+        self.assertIn(f'9002,hint,Custom:blf_t{t2}_alarm',blf.EXT_PATH.read_text())
+
+    def test_template_ignores_unsupported_key_on_legacy_group(self):
+        self.login()
+        with blf.conn() as db:
+            sid=db.execute("SELECT id FROM status_items WHERE tenant_id=1 AND slug='spontanschaltung'").fetchone()[0]
+        self.assertEqual(self.form('/admin/tenants/1/layout',
+                          {'status_id':str(sid),'display_label':'Status','blf_key':'26',
+                           'callflow':'951','callflow_key':'27'})[0],303)
+        status,_,head=self.form('/admin/tenants/1/phone',{'label':'Model export'})
+        pid=int(re.search(r'/admin/phones/(\d+)/settings',head['Location']).group(1))
+        status,xml,_=self.call('GET',f'/admin/phones/{pid}/template')
+        self.assertEqual(status,200)
+        ET.fromstring(xml)
+        self.assertIn('linekey.26.value = 9001',xml)
+        self.assertIn('linekey.27.value = 951',xml)
+        self.assertIn('{IF ua=SIP-T40G}',xml) if 'linekey.1.value = 9001' in xml else None
+
 if __name__=='__main__': unittest.main()

@@ -4984,15 +4984,6 @@ linekey.2.type =  0
 {ENDIF}
 
 {IF ua=SIP-T23P,SIP-T23G,SIP-T40G,SIP-T40P}
-{IF ua=SIP-T40G}
-# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
-linekey.1.line = 2
-linekey.1.value = 9001
-linekey.1.type = 16
-linekey.1.pickup_value =
-linekey.1.extension =
-linekey.1.label = Status
-{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5004,7 +4995,15 @@ linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
 {ENDIF}
-{ENDIF}
+{IF ua=SIP-T40G}
+# NEXPERTO: Status feiertag (Account 2)
+linekey.2.line = 2
+linekey.2.value = 9002
+linekey.2.type = 16
+linekey.2.pickup_value =
+linekey.2.extension =
+linekey.2.label = Feiertag
+{ELSE}
 #Configure Line Key2
 {IF blf2}
 linekey.2.line = %%Line%%
@@ -5015,6 +5014,7 @@ linekey.2.label = %%label%%
 linekey.2.extension = %%PickupValue%%
 {ELSE}
 linekey.2.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key3
 {IF blf3}
@@ -5403,11 +5403,11 @@ linekey.21.type =  0
 account.2.enable = 1
 account.2.label = BLF beispiel
 account.2.display_name = BLF beispiel
-account.2.user_name = blf_beispiel_telefon
-account.2.auth_name = blf_beispiel_telefon
-account.2.password = NUR-BEISPIEL-KENNUNG-KEIN-ECHTES-PASSWORT
+account.2.user_name = blf_demo_telefon
+account.2.auth_name = blf_demo_telefon
+account.2.password = BEISPIEL_KEIN_PASSWORT
 account.2.sip_server.1.transport_type = 0
-account.2.sip_server.1.address = blf.example.test
+account.2.sip_server.1.address = blf.example.invalid
 account.2.sip_server.1.port = 5062
 account.2.sip_server.1.expires = 300
 account.2.sip_server.1.register_on_enable = 1
@@ -5415,24 +5415,24 @@ account.2.sip_server.1.failback_mode = 0
 account.2.outbound_proxy_enable = 0
 
 {IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}
-# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
-linekey.1.line = 2
-linekey.1.value = 9001
-linekey.1.type = 16
-linekey.1.pickup_value =
-linekey.1.extension =
-linekey.1.label = Status
-#Configure Line Key2
-{IF blf2}
-linekey.2.line = %%Line%%
-linekey.2.value = %%type%%
-linekey.2.pickup_value = %%PickupValue%%
-linekey.2.type = %%DKtype%%
-linekey.2.label = %%label%%
-linekey.2.extension = %%PickupValue%%
+#Configure Line Key1
+{IF blf1}
+linekey.1.line = %%Line%%
+linekey.1.value = %%type%%
+linekey.1.pickup_value = %%PickupValue%%
+linekey.1.type = %%DKtype%%
+linekey.1.label = %%label%%
+linekey.1.extension = %%PickupValue%%
 {ELSE}
-linekey.2.type =  0
+linekey.1.type =  0
 {ENDIF}
+# NEXPERTO: Status feiertag (Account 2)
+linekey.2.line = 2
+linekey.2.value = 9002
+linekey.2.type = 16
+linekey.2.pickup_value =
+linekey.2.extension =
+linekey.2.label = Feiertag
 #Configure Line Key3
 {IF blf3}
 linekey.3.line = %%Line%%
@@ -5444,28 +5444,20 @@ linekey.3.extension = %%PickupValue%%
 {ELSE}
 linekey.3.type =  0
 {ENDIF}
-#Configure Line Key4
-{IF blf4}
-linekey.4.line = %%Line%%
-linekey.4.value = %%type%%
-linekey.4.pickup_value = %%PickupValue%%
-linekey.4.type = %%DKtype%%
-linekey.4.label = %%label%%
-linekey.4.extension = %%PickupValue%%
-{ELSE}
-linekey.4.type =  0
-{ENDIF}
-#Configure Line Key5
-{IF blf5}
-linekey.5.line = %%Line%%
-linekey.5.value = %%type%%
-linekey.5.pickup_value = %%PickupValue%%
-linekey.5.type = %%DKtype%%
-linekey.5.label = %%label%%
-linekey.5.extension = %%PickupValue%%
-{ELSE}
-linekey.5.type =  0
-{ENDIF}
+# NEXPERTO: 3CX Callflow 952 (Account 1)
+linekey.4.line = 1
+linekey.4.value = 952
+linekey.4.type = 13
+linekey.4.pickup_value =
+linekey.4.extension =
+linekey.4.label = Feiertag Schalten
+# NEXPERTO: Status spontanschaltung (Account 2)
+linekey.5.line = 2
+linekey.5.value = 9001
+linekey.5.type = 16
+linekey.5.pickup_value =
+linekey.5.extension =
+linekey.5.label = Status
 #Configure Line Key6
 {IF blf6}
 linekey.6.line = %%Line%%
@@ -5488,17 +5480,13 @@ linekey.7.extension = %%PickupValue%%
 {ELSE}
 linekey.7.type =  0
 {ENDIF}
-#Configure Line Key8
-{IF blf8}
-linekey.8.line = %%Line%%
-linekey.8.value = %%type%%
-linekey.8.pickup_value = %%PickupValue%%
-linekey.8.type = %%DKtype%%
-linekey.8.label = %%label%%
-linekey.8.extension = %%PickupValue%%
-{ELSE}
-linekey.8.type =  0
-{ENDIF}
+# NEXPERTO: 3CX Callflow 951 (Account 1)
+linekey.8.line = 1
+linekey.8.value = 951
+linekey.8.type = 13
+linekey.8.pickup_value =
+linekey.8.extension =
+linekey.8.label = Status Schalten
 #Configure Line Key9
 {IF blf9}
 linekey.9.line = %%Line%%
@@ -5711,15 +5699,6 @@ linekey.27.type =  0
 {ENDIF}
 
 {IF ua=SIP-T41S,SIP-T42G,SIP-T42S,SIP-T41U,SIP-T42U}
-{IF ua=SIP-T42G}
-# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
-linekey.1.line = 2
-linekey.1.value = 9001
-linekey.1.type = 16
-linekey.1.pickup_value =
-linekey.1.extension =
-linekey.1.label = Status
-{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5731,7 +5710,15 @@ linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
 {ENDIF}
-{ENDIF}
+{IF ua=SIP-T42G}
+# NEXPERTO: Status feiertag (Account 2)
+linekey.2.line = 2
+linekey.2.value = 9002
+linekey.2.type = 16
+linekey.2.pickup_value =
+linekey.2.extension =
+linekey.2.label = Feiertag
+{ELSE}
 #Configure Line Key2
 {IF blf2}
 linekey.2.line = %%Line%%
@@ -5742,6 +5729,7 @@ linekey.2.label = %%label%%
 linekey.2.extension = %%PickupValue%%
 {ELSE}
 linekey.2.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key3
 {IF blf3}
@@ -5754,6 +5742,15 @@ linekey.3.extension = %%PickupValue%%
 {ELSE}
 linekey.3.type =  0
 {ENDIF}
+{IF ua=SIP-T42G}
+# NEXPERTO: 3CX Callflow 952 (Account 1)
+linekey.4.line = 1
+linekey.4.value = 952
+linekey.4.type = 13
+linekey.4.pickup_value =
+linekey.4.extension =
+linekey.4.label = Feiertag Schalten
+{ELSE}
 #Configure Line Key4
 {IF blf4}
 linekey.4.line = %%Line%%
@@ -5765,6 +5762,16 @@ linekey.4.extension = %%PickupValue%%
 {ELSE}
 linekey.4.type =  0
 {ENDIF}
+{ENDIF}
+{IF ua=SIP-T42G}
+# NEXPERTO: Status spontanschaltung (Account 2)
+linekey.5.line = 2
+linekey.5.value = 9001
+linekey.5.type = 16
+linekey.5.pickup_value =
+linekey.5.extension =
+linekey.5.label = Status
+{ELSE}
 #Configure Line Key5
 {IF blf5}
 linekey.5.line = %%Line%%
@@ -5775,6 +5782,7 @@ linekey.5.label = %%label%%
 linekey.5.extension = %%PickupValue%%
 {ELSE}
 linekey.5.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key6
 {IF blf6}
@@ -5798,6 +5806,15 @@ linekey.7.extension = %%PickupValue%%
 {ELSE}
 linekey.7.type =  0
 {ENDIF}
+{IF ua=SIP-T42G}
+# NEXPERTO: 3CX Callflow 951 (Account 1)
+linekey.8.line = 1
+linekey.8.value = 951
+linekey.8.type = 13
+linekey.8.pickup_value =
+linekey.8.extension =
+linekey.8.label = Status Schalten
+{ELSE}
 #Configure Line Key8
 {IF blf8}
 linekey.8.line = %%Line%%
@@ -5808,6 +5825,7 @@ linekey.8.label = %%label%%
 linekey.8.extension = %%PickupValue%%
 {ELSE}
 linekey.8.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key9
 {IF blf9}
@@ -5889,15 +5907,6 @@ linekey.15.type =  0
 {ENDIF}
 
 {IF ua=SIP-T48G,SIP-T48S,SIP-T57W,SIP-T48U}
-{IF ua=SIP-T48G}
-# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)
-linekey.1.line = 2
-linekey.1.value = 9001
-linekey.1.type = 16
-linekey.1.pickup_value =
-linekey.1.extension =
-linekey.1.label = Status
-{ELSE}
 #Configure Line Key1
 {IF blf1}
 linekey.1.line = %%Line%%
@@ -5909,7 +5918,15 @@ linekey.1.extension = %%PickupValue%%
 {ELSE}
 linekey.1.type =  0
 {ENDIF}
-{ENDIF}
+{IF ua=SIP-T48G}
+# NEXPERTO: Status feiertag (Account 2)
+linekey.2.line = 2
+linekey.2.value = 9002
+linekey.2.type = 16
+linekey.2.pickup_value =
+linekey.2.extension =
+linekey.2.label = Feiertag
+{ELSE}
 #Configure Line Key2
 {IF blf2}
 linekey.2.line = %%Line%%
@@ -5920,6 +5937,7 @@ linekey.2.label = %%label%%
 linekey.2.extension = %%PickupValue%%
 {ELSE}
 linekey.2.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key3
 {IF blf3}
@@ -5932,6 +5950,15 @@ linekey.3.extension = %%PickupValue%%
 {ELSE}
 linekey.3.type =  0
 {ENDIF}
+{IF ua=SIP-T48G}
+# NEXPERTO: 3CX Callflow 952 (Account 1)
+linekey.4.line = 1
+linekey.4.value = 952
+linekey.4.type = 13
+linekey.4.pickup_value =
+linekey.4.extension =
+linekey.4.label = Feiertag Schalten
+{ELSE}
 #Configure Line Key4
 {IF blf4}
 linekey.4.line = %%Line%%
@@ -5943,6 +5970,16 @@ linekey.4.extension = %%PickupValue%%
 {ELSE}
 linekey.4.type =  0
 {ENDIF}
+{ENDIF}
+{IF ua=SIP-T48G}
+# NEXPERTO: Status spontanschaltung (Account 2)
+linekey.5.line = 2
+linekey.5.value = 9001
+linekey.5.type = 16
+linekey.5.pickup_value =
+linekey.5.extension =
+linekey.5.label = Status
+{ELSE}
 #Configure Line Key5
 {IF blf5}
 linekey.5.line = %%Line%%
@@ -5953,6 +5990,7 @@ linekey.5.label = %%label%%
 linekey.5.extension = %%PickupValue%%
 {ELSE}
 linekey.5.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key6
 {IF blf6}
@@ -5976,6 +6014,15 @@ linekey.7.extension = %%PickupValue%%
 {ELSE}
 linekey.7.type =  0
 {ENDIF}
+{IF ua=SIP-T48G}
+# NEXPERTO: 3CX Callflow 951 (Account 1)
+linekey.8.line = 1
+linekey.8.value = 951
+linekey.8.type = 13
+linekey.8.pickup_value =
+linekey.8.extension =
+linekey.8.label = Status Schalten
+{ELSE}
 #Configure Line Key8
 {IF blf8}
 linekey.8.line = %%Line%%
@@ -5986,6 +6033,7 @@ linekey.8.label = %%label%%
 linekey.8.extension = %%PickupValue%%
 {ELSE}
 linekey.8.type =  0
+{ENDIF}
 {ENDIF}
 #Configure Line Key9
 {IF blf9}

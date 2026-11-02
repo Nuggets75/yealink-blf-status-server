@@ -1,6 +1,6 @@
 # Yealink BLF Control Center – zentraler Multi-Tenant-Statusserver
 
-Version: **1.4 Test-/Pilotversion** · ein Asterisk mit PJSIP, Python-API und browserbasierter Kundenverwaltung · keine Verbindung *vom Server zur 3CX*.
+Version: **1.5 Test-/Pilotversion** · ein Asterisk mit PJSIP, Python-API und browserbasierter Kundenverwaltung · keine Verbindung *vom Server zur 3CX*.
 
 ## Funktionsprinzip
 
@@ -19,14 +19,12 @@ Yealink Telefon (Kunde A): SIP REGISTER/SUBSCRIBE -> Asterisk:5062/UDP -> SIP NO
 - Getrennte SIP-Accounts pro **Telefon**, eigene Asterisk-Kontexte und Statuswerte pro **Kunde**. BLF-Nebenstelle `9001` darf bei jedem Kunden dieselbe Nummer sein.
 - Eigener API-Schlüssel pro Kunde, der **den Kunden bestimmt**; ein Client kann nicht durch Manipulation von Kunden-IDs andere Anlagen steuern.
 - Admin-Weboberfläche unter `/admin` mit Login, Kunden, Telefonen, Statuswerten, API-Key-Rotation und manueller Statusprüfung.
-- Sichere, kundenspezifische 3CX-Custom-Template-Downloads (enthalten SIP-Passwörter). Standardmäßig wird **Taste 1** (für T40G/T42G/T46G/T48G sowie T46S/T54W und Modelle in derselben 3CX-Tastengruppe) die Status-BLF `9001` auf SIP-Account 2. **Taste 2 und alle weiteren bleiben weiterhin gemäß 3CX konfigurierbar.**
+- Sichere, kundenspezifische 3CX-Custom-Template-Downloads (enthalten SIP-Passwörter). **Statusanzeigen können auf frei wählbare physische Tasten** 1–27 verteilt werden, soweit das jeweilige Yealink-Modell diese unterstützt. Standardmäßig liegt der erste Status weiterhin auf Taste 1; **alle anderen, nicht zugewiesenen Tasten bleiben bei 3CX**.
 - Die Callflow-Nummern (etwa 951) bleiben ausschließlich auf der 3CX-Seite. Der Statusserver ruft **keine** 3CX an.
 
 ### Hinweis zur Tastenkonfiguration
 
-Taste 1 zeigt nur den Zustand der Spontanschaltung an. Sie ist eine **normale BLF** von Asterisk, kein Callflow-Schalter. Beim Drücken versucht das Telefon in der Regel, `9001` über Account 2 zu wählen; auf Asterisk wird ein solcher Anruf verworfen. Ein-/Ausschalten erfolgt über regulär von 3CX eingerichtete Speed-Dial-/CFD-Tasten oder andere bestehende Wege. Es werden **keine Callflow-Tasten** in der Vorlage hartkodiert.
-
-Die physische Taste 1 ist damit **nicht mehr über BLF-Feld 1 der 3CX konfigurierbar**. Die 3CX-Felder ab 2 bleiben unverändert und belegen die physischen Tasten 2 ff. Für Anlagen mit weiteren Status-BLFs (z. B. 9002/9003) legt die Admin-Oberfläche die Statusressourcen an; die zusätzliche Zuweisung auf freie Yealink-Tasten ist in dieser Version noch manuell bzw. als kundenspezifische Erweiterung der Vorlage vorzunehmen.
+Der BLF-Status wird über SIP-**Account 2** vom Asterisk-Server abonniert. Bei einem Tastendruck verwendet die BLF nach den bisherigen Yealink-Hardwaretests diesen Account 2 für die Wahl und erreicht den 3CX-Callflow daher nicht. Der neue Tastenplan kann **pro Status eine separate Speed-Dial-Taste über Account 1** für die Callflownummer erzeugen. Diese Trennung ist technisch erforderlich, bis eine zuverlässige Ein-Tasten-Methode nachgewiesen ist. Weitere Belegungen, die nicht im Kundenportal reserviert sind, bleiben 3CX-verwaltet.
 
 ## Upgrade vom bisherigen `blf-asterisk`-Testcontainer
 
@@ -86,8 +84,8 @@ Sicherheitsmaßnahmen: Admin-Zugriff auf `/admin` über Nginx nach Möglichkeit 
 2. **Neuen Kunden anlegen** (`name`, eindeutige `slug`-Kennung). Standardstatus `spontanschaltung` mit BLF-Nummer `9001` wird automatisch eingerichtet.
 3. API-Schlüssel nach der Anlage sicher verwahren. Bei Schlüsseln aus Version 1.2 kann er später nach erneuter Admin-Passwortprüfung unter **API-Schlüssel anzeigen** eingesehen werden. Schlüssel aus der alten Version lassen sich nur anzeigen, wenn der frühere `API_TOKEN` noch bekannt ist; sonst einmalig **API-Schlüssel neu erzeugen** verwenden (alter Schlüssel verliert dann sofort seine Gültigkeit).
 4. Ein **Telefon hinzufügen**, Bezeichnung eingeben. Das neue SIP-Konto wird serverseitig erzeugt und Asterisk neu geladen.
-5. Unter dem Telefon **BLF-Label / XML herunterladen** auswählen; dort das Feld **Beschriftung der Status-BLF (Taste 1)** anpassen (Standard `Status`) und **Label speichern und 3CX-XML herunterladen** klicken. Das Label wird für dieses Telefon gespeichert und beim nächsten Export erneut vorgeschlagen.
-6. Kunden bei Bedarf deaktivieren, zusätzliche Statusressourcen (z. B. `notbetrieb`, BLF `9002`) hinzufügen und aktuelle Zustände im Webinterface überprüfen.
+5. Beim Kunden unter **Statusanzeigen und Tastenplan** pro Status die BLF-Taste, Beschriftung, Callflownummer und optional separate 3CX-Wähltaste einstellen. Anschließend beim Telefon **Tastenplan / XML herunterladen** auswählen. Das bisherige individuelle Telefonlabel für Taste 1 bleibt verfügbar.
+6. Kunden bei Bedarf deaktivieren, zusätzliche Statusressourcen (z. B. `notbetrieb`) hinzufügen und aktuelle Zustände im Webinterface überprüfen. Die interne BLF-Nummer wird automatisch vergeben.
 
 **Wichtig:** Der Template-Download ist personalisiert und enthält das SIP-Passwort für Account 2. **Nicht auf öffentliches GitHub hochladen**, nicht unverschlüsselt versenden.
 
@@ -97,15 +95,16 @@ Die beigefügte Originalvorlage `templates/source-yealinkT4x.ph.xml` stammt aus 
 
 - unverändertem Account 1 (3CX)
 - einem für dieses Telefon individuellen Account 2 mit SIP-Domain aus `SIP_HOST` und Port 5062
-- **physischer Taste 1**: `linekey.1.type=16`, `linekey.1.line=2`, `linekey.1.value=9001`, Label `Status` (je Telefon editierbar vor dem Download)
-- **Tasten 2 ff.**: unveränderte 3CX-DSS-Belegungen
+- pro zugewiesener Statusanzeige einer **BLF** mit `linekey.N.type=16`, `linekey.N.line=2`, automatisch erzeugter `linekey.N.value` (z. B. `9001`) und konfigurierbarem Label
+- auf Wunsch pro Status einer **separaten Speed Dial**-Taste mit `linekey.M.type=13`, `linekey.M.line=1`, `linekey.M.value` gleich der ausgewählten 3CX-Callflownummer
+- **allen anderen, nicht zugewiesenen Tasten** gemäß unveränderter 3CX-DSS-Belegung
 - eigenem Vorlagennamen und abgewandelten Yealink-y-Dateinamen (`y100...`) gegenüber der Standardvorlage
 
-Die Taste-1-Belegung umfasst die T46S/T54W-Modellgruppe sowie T40G, T42G, T46G (Modellname in 3CX: Yealink T46) und T48G. Weitere Modelle bitte vor Einsatz in der erzeugten 3CX-Provisionierung gezielt pruefen.
+Unterstützte Zielgruppen der spezifischen Belegung sind die aus v1.4 bekannten T46S/T54W-Modelle sowie T40G, T42G, T46G (Modellname in 3CX: Yealink T46) und T48G. Pro Gerät nur tatsächlich vorhandene Tasten belegen; die höchstmögliche physische Tastennummer ist modellabhängig.
 
 **Einbindung in 3CX:** Nach 3CX-Anleitung ein Custom Phone Template für den jeweiligen Kunden anlegen und das personalisierte XML als Basis verwenden, z. B. unter dem vorgesehenen `CustomTemplates/phones/`-Verzeichnis auf einer selbst verwalteten Installation. Bei einer per 3CX-UI erzeugten Vorlagenkopie beachten, dass Namen, Modelle und y-Dateinamen zueinander passen. Je nach 3CX-Edition/Hosting kann der Zugriff auf die Vorlagen eingeschränkt sein. Das **Ändern eines Custom Templates hebt die normale 3CX-Unterstützung für das Telefon teilweise auf**. Vor Einsatz immer `View Configuration` kontrollieren und eine gezielte Reprovisionierung **nur eines Testtelefons** durchführen. Die `y100...` Dateinamen müssen pro PBX eindeutig sein und gegebenenfalls angepasst werden, falls andere Custom Templates sie bereits verwenden.
 
-**3CX-Tests nach Reprovisionierung:** Account 1 weiterhin registriert, Account 2 registriert, Taste 1 zeigt Status-BLF, Taste 2 und folgende werden von 3CX gesetzt. Die zugehörige IP-Phone-Template-Dokumentation ist in der 3CX-Webseite beschrieben: https://www.3cx.com/docs/custom-ip-phone-templates/
+**3CX-Tests nach Reprovisionierung:** Account 1 weiterhin registriert, Account 2 registriert, nur die im Kundenportal ausgewählten BLF-/3CX-Kurzwahltasten werden gesetzt, die übrigen Tasten bleiben bei 3CX. Die zugehörige IP-Phone-Template-Dokumentation ist in der 3CX-Webseite beschrieben: https://www.3cx.com/docs/custom-ip-phone-templates/
 
 Die mitgelieferte Datei `templates/BEISPIEL-KEINE-ECHTEN-ZUGANGSDATEN.xml` ist **nur ein Muster mit Platzhalterwerten**; sie ist nicht direkt für eine Kundenanlage geeignet. Das richtige XML wird über `/admin` nach dem Anlegen des Telefons exportiert.
 
@@ -308,3 +307,31 @@ werden nicht veraendert.
 
 Beim Update von v1.3 migriert die Datenbank automatisch. Alle Kunden,
 Telefone, API-Schluessel und SIP-Zugangsdaten bleiben erhalten.
+
+## Neu in v1.5: freie Status-/Tastenbelegung je Kunde
+
+Im Kundenportal unter **Statusanzeigen und Tastenplan** lassen sich beliebig viele Statusanzeigen anlegen. Je Status lassen sich einstellen:
+
+| Feld | Funktion |
+|---|---|
+| Interne Kennung | API-Endpunkt `/v1/status/<slug>`; kann nicht nachträglich geändert werden. |
+| Beschriftung | Gewünschter Text auf der Yealink-BLF-Taste. Das von v1.4 bekannte telefonindividuelle Label auf Taste 1 wird weiterhin berücksichtigt. |
+| BLF-Taste (1–27) | Position der Status-LED, z. B. 5. Konfiguration: `linekey.5.type = 16`, `linekey.5.line = 2`, `linekey.5.value = 9001`. |
+| 3CX-Callflownummer | Zielnummer für die Schaltaktion, z. B. `951`, `952` oder `*42`. Je Status separat gespeichert. |
+| Separate 3CX-Anruftaste (1–27) | Optionale zusätzliche Kurzwahltaste, z. B. 8. Konfiguration: `linekey.8.type = 13`, `linekey.8.line = 1`, `linekey.8.value = 951`. |
+| Interne BLF-Nummer | Automatisch erzeugt, nur Anzeige. 9001, 9002 ... jeweils pro Kunde (nicht global). |
+
+**Wichtig:** Die Status-BLF ist auf **Account 2** registriert und überwacht den Asterisk-Hint. Bei den bisher getesteten T46G/T46S/T54W kann die Enhanced-BLF-Aktion nicht unabhängig über Account 1 wählen. Darum **nicht behaupten, dass eine einzige Taste gleichzeitig Status von Asterisk und die Schaltaktion über 3CX ausführen kann**. v1.5 verwendet dafür bei Bedarf zwei verschiedene Tasten. Die Callflownummer allein bedeutet noch nicht, dass der BLF-Tastendruck den Callflow auslöst.
+
+Ein beispielhafter Tastenplan:
+
+| Status | Interne BLF-Nummer | Status-BLF | Callflow | 3CX-Schalttaste |
+|---|---|---|---|---|
+| spontanschaltung | 9001 | 5 | 951 | 8 |
+| feiertag | 9002 | 2 | 952 | 4 |
+
+Für beide Statusmeldungen bleibt die API einfach: `POST /v1/status/spontanschaltung` bzw. `/v1/status/feiertag`, `X-API-Key` des Kunden und `{"value": 0}`/`{"value": 1}`. Es gibt pro Kunde einen eigenen Asterisk-Kontext (`blf_t<tenant_id>`); interne BLF-Nebenstellen müssen **nur innerhalb eines Kunden** eindeutig sein. Eine neue BLF-Nebenstelle wird automatisch aus dem nächstfreien Wert ab 9001 vergeben.
+
+**Modelle und physische Tasten:** Die Kundentastenzuordnung betrifft die in der bisherigen v1.4-Exportlogik enthaltenen T4-/T5-Modellgruppen (insbesondere T40G, T42G, T46G, T46S, T48G, T54W). Ein Gerät, das z. B. nur drei Tasten unterstützt, kann keine Belegung auf Taste 26 darstellen. Alle nicht vom BLF Control Center reservierten Tasten bleiben in der normalen 3CX-Konfiguration. Nicht alle im XML genannten Modelle wurden live verifiziert; vor Rollout die von 3CX erzeugte MAC-CFG ansehen.
+
+**Update:** GitHub-Repository-Dateien mit v1.5 ersetzen, in Dockhand **Image neu bauen und deployen**; das persistente Volume `asterisk-state` beibehalten. Bei bestehenden Statusanzeigen die Tasten im Portal einstellen, kundenspezifische XML neu exportieren und Testtelefon reprovisionieren. **Keine** alten Tastenprovisionierungsversuche aus den Zwischenständen Stufe 2/3/4 in der Vorlage übernehmen.

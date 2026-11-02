@@ -154,6 +154,21 @@ def db_init():
         phone_columns = {row['name'] for row in db.execute('PRAGMA table_info(phones)')}
         if 'blf_label' not in phone_columns:
             db.execute("ALTER TABLE phones ADD COLUMN blf_label TEXT NOT NULL DEFAULT 'Status'")
+        # v1.5: layouts live on the tenant's status, never on the global SIP account.
+        status_columns = {row['name'] for row in db.execute('PRAGMA table_info(status_items)')}
+        for field, definition in (
+            ('display_label', "TEXT NOT NULL DEFAULT 'Status'"),
+            ('blf_key', 'INTEGER'),
+            ('callflow', "TEXT NOT NULL DEFAULT ''"),
+            ('callflow_key', 'INTEGER'),
+        ):
+            if field not in status_columns:
+                db.execute(f'ALTER TABLE status_items ADD COLUMN {field} {definition}')
+        # Existing customers keep only their proven key 1 configuration. Other
+        # older statuses remain unassigned until the admin explicitly maps them.
+        if not db.execute("SELECT 1 FROM settings WHERE key='layout_v15_migrated'").fetchone():
+            db.execute("UPDATE status_items SET blf_key=1 WHERE extension=9001 AND blf_key IS NULL")
+            db.execute("INSERT INTO settings(key,value) VALUES('layout_v15_migrated','1')")
         ensure_encryption_key(db)
         db.execute('PRAGMA journal_mode=WAL')
         if not db.execute("SELECT 1 FROM settings WHERE key='admin_hash'").fetchone():
@@ -171,6 +186,7 @@ def db_init():
                                        ('testanlage', 'Testanlage (übernommen)', now)).lastrowid
                 db.execute('INSERT INTO status_items(tenant_id,slug,extension,value,changed_at) VALUES(?,?,?,?,?)',
                            (tenant_id, 'spontanschaltung', 9001, 0, now))
+                db.execute('UPDATE status_items SET blf_key=1 WHERE tenant_id=? AND slug=?', (tenant_id,'spontanschaltung'))
                 db.execute('INSERT INTO phones(tenant_id,label,sip_user,sip_password,created_at) VALUES(?,?,?,?,?)',
                            (tenant_id, 'Bisheriges Testtelefon', 'status01', legacy_sip, now))
                 db.execute('INSERT INTO api_keys(tenant_id,token_hash,token_ciphertext) VALUES(?,?,?)',
@@ -319,20 +335,92 @@ def tenant_panel(db, tenant, session, token=None, notice=''):
             '<input type="password" name="password" autocomplete="current-password" required>'
             '<p><button class="warn" type="submit">Kunde und alle Daten unwiderruflich löschen</button></p>'
             '</form></details></section></div>')
-    out += '<section class="card"><h2>Statusanzeigen</h2><table><tr><th>Name</th><th>BLF-Nummer</th><th>Zustand</th><th>Aktion</th></tr>'
+    out += ('<section class="card"><h2>Statusanzeigen und Tastenplan</h2>'
+            '<p class="sub">Pro Kunde ein gemeinsamer Tastenplan für alle exportierten Telefone. '
+            'BLF zeigt den Zustand über SIP-Konto 2. Die optional getrennte 3CX-Anruftaste '
+            'wählt den Callflow über SIP-Konto 1. Dieselbe Taste kann bei dieser '
+            'Yealink-Konfiguration nicht zuverlässig beides übernehmen.</p>'
+            '<p class="sub">Interne BLF-Nummern werden automatisch im Kunden-Kontext vergeben '
+            'und dürfen bei anderen Kunden identisch sein. Nicht in 3CX als Nebenstelle einrichten.</p>')
     for s in stat:
-        if s['value']:
-            new_val, label = 0, 'Auf AUS setzen'
-        else:
-            new_val, label = 1, 'Auf EIN setzen'
-        out += f'<tr><td>{e(s["slug"])}</td><td>{s["extension"]}</td><td><span class="pill {"" if s["value"] else "off"}">{"EIN / BUSY" if s["value"] else "AUS / IDLE"}</span></td><td><form class="inline" method="post" action="/admin/tenants/{tid}/set">{csrf}<input type="hidden" name="slug" value="{e(s["slug"])}"><input type="hidden" name="value" value="{new_val}"><button class="secondary">{label}</button></form></td></tr>'
-    out += f'</table><details style="margin-top:18px"><summary>Status hinzufügen (max. 3 empfohlen)</summary><form method="post" action="/admin/tenants/{tid}/status">{csrf}<label>Interne Bezeichnung (a-z, 0-9, -)</label><input name="slug" required pattern="[a-z][a-z0-9-]{{1,30}}" placeholder="notbetrieb"><label>BLF-Nebenstelle</label><input type="number" name="extension" required min="100" max="99999" placeholder="9002"><p><button>Status anlegen</button></p></form></details></section>'
+        state = ('EIN / BUSY' if s['value'] else 'AUS / IDLE')
+        next_val = 0 if s['value'] else 1
+        status_button = ('Auf AUS setzen' if s['value'] else 'Auf EIN setzen')
+        blf_pos = s['blf_key'] if s['blf_key'] is not None else ''
+        dial_pos = s['callflow_key'] if s['callflow_key'] is not None else ''
+        out += (f'<div style="border-top:1px solid #e6ecf3;padding:16px 0">'
+                f'<div class="row spread"><b>{e(s["slug"])}</b><span class="pill {"" if s["value"] else "off"}">{state}</span></div>'
+                f'<p class="sub">Interne BLF-Nummer: <code>{s["extension"]}</code> · CFD: <code>POST /v1/status/{e(s["slug"])}</code></p>'
+                f'<form method="post" action="/admin/tenants/{tid}/layout">{csrf}'
+                f'<input type="hidden" name="status_id" value="{s["id"]}">'
+                '<div class="grid">'
+                f'<div><label>Tastenbeschriftung</label><input name="display_label" maxlength="40" required value="{e(s["display_label"])}"></div>'
+                f'<div><label>BLF-Taste (1–27, leer = keine)</label><input name="blf_key" type="number" min="1" max="27" value="{blf_pos}"></div>'
+                f'<div><label>3CX-Callflownummer</label><input name="callflow" maxlength="20" value="{e(s["callflow"])}" placeholder="z. B. 951"></div>'
+                f'<div><label>Separate 3CX-Anruftaste (1–27, optional)</label><input name="callflow_key" type="number" min="1" max="27" value="{dial_pos}"></div>'
+                '</div><p><button class="secondary">Tastenplan speichern</button></p></form>'
+                f'<form class="inline" method="post" action="/admin/tenants/{tid}/set">{csrf}'
+                f'<input type="hidden" name="slug" value="{e(s["slug"])}">'
+                f'<input type="hidden" name="value" value="{next_val}">'
+                f'<button class="secondary">{status_button}</button></form></div>')
+    used = {v for row in stat for v in (row['blf_key'],row['callflow_key']) if v is not None}
+    suggested = next((i for i in range(1,28) if i not in used), None)
+    out += (f'<details style="margin-top:18px"><summary>Status hinzufügen</summary>'
+            f'<form method="post" action="/admin/tenants/{tid}/status">{csrf}'
+            '<label>Interne Bezeichnung (a-z, 0-9, -)</label>'
+            '<input name="slug" required pattern="[a-z][a-z0-9-]{1,30}" placeholder="notbetrieb">'
+            '<label>Beschriftung</label><input name="display_label" maxlength="40" value="Status" required>'
+            f'<label>BLF-Tastennummer (1–27, optional)</label><input name="blf_key" type="number" min="1" max="27" value="{suggested or ""}">'
+            '<label>3CX-Callflownummer (optional)</label><input name="callflow" maxlength="20" placeholder="z. B. 951">'
+            '<label>Separate 3CX-Anruftaste (optional)</label><input name="callflow_key" type="number" min="1" max="27">'
+            '<p class="sub">Die interne BLF-Nummer wird automatisch vergeben. '
+            'Eine belegte Taste wird bei der Provisionierung von 3CX überschrieben. '
+            'Tasten über dem Modellmaximum werden auf dem betreffenden Telefon nicht angelegt.</p>'
+            '<p><button>Status anlegen</button></p></form></details></section>')
     out += '<section class="card"><h2>Telefone</h2><p class="sub">Jedes Telefon erhält individuelle SIP-Zugangsdaten. Der Export enthält diese vertraulichen Werte und muss geschützt behandelt werden.</p><table><tr><th>Bezeichnung</th><th>SIP-Konto</th><th>3CX-Telefonvorlage</th><th>Aktiv</th><th>Verwalten</th></tr>'
     for p in phones:
-        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/settings">BLF-Label / XML herunterladen</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td><td><a href="/admin/phones/{p["id"]}/settings">Verwalten / löschen</a></td></tr>'
+        out += f'<tr><td>{e(p["label"])}</td><td><code>{e(p["sip_user"])}</code></td><td><a href="/admin/phones/{p["id"]}/settings">Tastenplan / XML herunterladen</a></td><td><form class="inline" method="post" action="/admin/phones/{p["id"]}/active">{csrf}<button class="secondary">{"Deaktivieren" if p["active"] else "Aktivieren"}</button></form></td><td><a href="/admin/phones/{p["id"]}/settings">Verwalten / löschen</a></td></tr>'
     out += f'</table><form method="post" action="/admin/tenants/{tid}/phone">{csrf}<label>Telefonbezeichnung</label><input name="label" maxlength="80" required placeholder="Empfang T54W"><p><button>Telefon anlegen</button></p></form></section>'
     out += '<p class="muted">3CX-Kontakt: Der Server verbindet sich niemals mit einer 3CX-Anlage. Ausschließlich CFD → HTTPS-API und Telefon → SIP sind erforderlich.</p>'
     return page(tenant['name'], out, csrf)
+
+
+def next_blf_extension(db, tenant_id):
+    """Numbers are unique within a tenant's Asterisk subscribe_context only."""
+    used = {r[0] for r in db.execute('SELECT extension FROM status_items WHERE tenant_id=?', (tenant_id,))}
+    for extension in range(9001, 100000):
+        if extension not in used:
+            return extension
+    raise ValueError('Keine interne BLF-Nummer mehr frei')
+
+
+def parse_key_field(raw, field):
+    raw = str(raw or '').strip()
+    if not raw:
+        return None
+    if not raw.isdecimal() or not 1 <= int(raw) <= 27:
+        raise ValueError(field + ': nur Tastennummern 1 bis 27 erlaubt')
+    return int(raw)
+
+
+def validate_status_layout(db, tenant_id, status_id, label, blf_raw, callflow, dial_raw):
+    label = validate_blf_label(label)
+    blf_key = parse_key_field(blf_raw, 'BLF-Taste')
+    callflow_key = parse_key_field(dial_raw, '3CX-Anruftaste')
+    callflow = callflow.strip()
+    if callflow and not re.fullmatch(r'[0-9*#]{1,20}', callflow):
+        raise ValueError('Callflow muss aus 1 bis 20 Ziffern, * oder # bestehen')
+    if callflow_key and not callflow:
+        raise ValueError('Bei einer 3CX-Anruftaste ist eine Callflow-Nummer erforderlich')
+    if blf_key and callflow_key and blf_key == callflow_key:
+        raise ValueError('BLF und 3CX-Anruf können nicht auf dieselbe Taste gelegt werden (verschiedene SIP-Konten)')
+    occupied = set()
+    for row in db.execute('SELECT blf_key,callflow_key FROM status_items WHERE tenant_id=? AND id!=?',
+                          (tenant_id,status_id)):
+        occupied.update(v for v in (row['blf_key'],row['callflow_key']) if v is not None)
+    if blf_key in occupied or callflow_key in occupied:
+        raise ValueError('Tastennummer wird bereits von einem anderen Status verwendet')
+    return label, blf_key, callflow, callflow_key
 
 
 def validate_blf_label(value):
@@ -349,20 +437,42 @@ def validate_blf_label(value):
     return value
 
 
-def build_template(phone, tenant, sip_host, sip_port):
-    """Per-customer 3CX template. Sensitive output, admin-authenticated only."""
+def build_template(phone, tenant, sip_host, sip_port, statuses=None):
+    """Personalized 3CX template; only mapped DSS keys override stock 3CX slots."""
     original = SOURCE_TEMPLATE.read_text('utf-8')
-    # Keep the untouched 3CX key mappings for every model except the selected
-    # control phones. Modify precisely the first key of the matching model group.
-    # Yealink T40G/T42G/T48G share key groups with other models: nested IF
-    # branches preserve the stock behavior for those other models.
-    status_key = ("# NEXPERTO: Taste 1 / zentraler Statusserver (kein Callflow)\n"
-                  "linekey.1.line = 2\n"
-                  "linekey.1.value = 9001\n"
-                  "linekey.1.type = 16\n"
-                  "linekey.1.pickup_value =\n"
-                  "linekey.1.extension =\n"
-                  f'linekey.1.label = {validate_blf_label(phone["blf_label"])}\n')
+    if statuses is None:
+        with conn() as db:
+            statuses = db.execute('SELECT * FROM status_items WHERE tenant_id=? ORDER BY id',
+                                  (tenant['id'],)).fetchall()
+    assignments = {}
+    for status in statuses:
+        if status['blf_key'] is not None:
+            label = status['display_label']
+            # v1.4 phone-specific label remains a backwards-compatible override
+            # for the old default Status on the first BLF key.
+            if status['blf_key'] == 1 and phone['blf_label'] != 'Status':
+                label = phone['blf_label']
+            label = validate_blf_label(label)
+            pos = int(status['blf_key'])
+            assignments[pos] = (f'# NEXPERTO: Status {status["slug"]} (Account 2)\n'
+                                f'linekey.{pos}.line = 2\n'
+                                f'linekey.{pos}.value = {status["extension"]}\n'
+                                f'linekey.{pos}.type = 16\n'
+                                f'linekey.{pos}.pickup_value =\n'
+                                f'linekey.{pos}.extension =\n'
+                                f'linekey.{pos}.label = {label}\n')
+        if status['callflow_key'] is not None:
+            pos = int(status['callflow_key'])
+            label = validate_blf_label(status['display_label'])
+            assignments[pos] = (f'# NEXPERTO: 3CX Callflow {status["callflow"]} (Account 1)\n'
+                                f'linekey.{pos}.line = 1\n'
+                                f'linekey.{pos}.value = {status["callflow"]}\n'
+                                f'linekey.{pos}.type = 13\n'
+                                f'linekey.{pos}.pickup_value =\n'
+                                f'linekey.{pos}.extension =\n'
+                                f'linekey.{pos}.label = {label} Schalten\n')
+    # Modify stock 3CX BLF blocks *in place*. Keep all non-mapped positions and
+    # models untouched, including the existing BLF and non-linekey logic.
     groups = (
         ('{IF ua=SIP-T44U,SIP-T44W,SIP-T46G,SIP-T46S,SIP-T46U,SIP-T54W}', None),
         ('{IF ua=SIP-T23P,SIP-T23G,SIP-T40G,SIP-T40P}', 'SIP-T40G'),
@@ -373,19 +483,28 @@ def build_template(phone, tenant, sip_host, sip_port):
         head, sep, tail = original.partition(marker)
         if not sep:
             raise RuntimeError('Telefonvorlagenblock nicht gefunden: ' + marker)
-        start = tail.find('#Configure Line Key1')
-        end = tail.find('#Configure Line Key2')
-        group_end = tail.find('{ENDIF}')
-        if start < 0 or end < 0 or end <= start or group_end < start:
-            raise RuntimeError('Linekey-Tastendefinition nicht gefunden: ' + marker)
-        previous = tail[start:end]
-        if only_model:
-            replacement = (f'{{IF ua={only_model}}}\n' + status_key
-                           + '{ELSE}\n' + previous + '{ENDIF}\n')
-        else:
-            replacement = status_key
-        tail = tail[:start] + replacement + tail[end:]
-        original = head + marker + tail
+        # The key marker occurs only in this model-group block. Do not accidentally
+        # consume a later group when the model lacks a given physical key.
+        group_end = tail.find('\n{ENDIF}\n\n{IF ua=')
+        if group_end < 0:
+            raise RuntimeError('Modellgruppe hat kein erwartetes Ende: ' + marker)
+        block, rest = tail[:group_end], tail[group_end:]
+        # Each native key block is introduced by an exact '#Configure Line KeyN'
+        # line. Replacing this one block handles all 3CX blfN/else branches.
+        for pos, replacement in sorted(assignments.items()):
+            find_head = re.search(rf'(?m)^#Configure Line Key{pos}\s*$', block)
+            if not find_head:
+                continue  # A short-key device does not support this position.
+            next_key = re.search(r'(?m)^#Configure Line Key\d+\s*$', block[find_head.end():])
+            stop = find_head.end() + next_key.start() if next_key else len(block)
+            native = block[find_head.start():stop]
+            if only_model:
+                configured = (f'{{IF ua={only_model}}}\n' + replacement
+                              + '{ELSE}\n' + native + '{ENDIF}\n')
+            else:
+                configured = replacement
+            block = block[:find_head.start()] + configured + block[stop:]
+        original = head + marker + block + rest
     # Account.2 is defined only once in the MAC-specific config CDATA.
     marker = groups[0][0]
     # Per-phone account.2 config is placed in MAC-specific config CDATA, before the
@@ -543,7 +662,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     try: content=build_template(p,t,SIP_HOST,SIP_PORT)
                     except (OSError,RuntimeError,ValueError) as ex: self.error(500,str(ex));return
                     self.output(200,content,'application/xml; charset=utf-8',{'Content-Disposition':f'attachment; filename="blf-{t["slug"]}-{p["id"]}.xml"'});return
-                out=f'<p><a href="/admin/tenants/{t["id"]}">← Kunde</a></p><h1>{e(p["label"])}</h1><div class="card"><h2>SIP-Konto 2</h2><p>Server: <code>{e(SIP_HOST)}:{SIP_PORT}/UDP</code></p><p>Benutzer / Auth-Name: <code>{e(p["sip_user"])}</code></p><p>Passwort:</p><div class="secret">{e(p["sip_password"])}</div><form method="post" action="/admin/phones/{p["id"]}/template">{csrf_field(session)}<label>Beschriftung der Status-BLF (Taste 1)</label><input name="blf_label" value="{e(p["blf_label"])}" maxlength="40" required><p><button type="submit">Label speichern und 3CX-XML herunterladen</button></p></form><p class="muted">Voreinstellung: Status. Die Beschriftung wird pro Telefon gespeichert.</p><p class="muted">Vertraulich: XML enthält SIP-Zugangsdaten und gehört nicht ins öffentliche GitHub.</p></div>'
+                out=f'<p><a href="/admin/tenants/{t["id"]}">← Kunde</a></p><h1>{e(p["label"])}</h1><div class="card"><h2>SIP-Konto 2</h2><p>Server: <code>{e(SIP_HOST)}:{SIP_PORT}/UDP</code></p><p>Benutzer / Auth-Name: <code>{e(p["sip_user"])}</code></p><p>Passwort:</p><div class="secret">{e(p["sip_password"])}</div><form method="post" action="/admin/phones/{p["id"]}/template">{csrf_field(session)}<label>Individuelle Beschriftung fuer Taste 1 (ueberschreibt Kundenlabel)</label><input name="blf_label" value="{e(p["blf_label"])}" maxlength="40" required><p><button type="submit">Label speichern und 3CX-XML herunterladen</button></p></form><p class="muted">Voreinstellung: Status. Kunden-Tastenplan oben konfigurieren; diese Beschriftung ist nur ein optionaler Telefon-spezifischer Override fuer Taste 1.</p><p class="muted">Vertraulich: XML enthält SIP-Zugangsdaten und gehört nicht ins öffentliche GitHub.</p></div>'
                 out += (f'<div class="card"><details><summary>Telefon dauerhaft löschen</summary>'
                         '<p class="sub">Das SIP-Konto wird aus der aktiven Asterisk-Konfiguration entfernt. Ein Export dieser XML wird anschließend nicht mehr möglich sein.</p>'
                         f'<form method="post" action="/admin/phones/{p["id"]}/delete">{csrf_field(session)}'
@@ -583,6 +702,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     now=int(time.time()); token=fresh_key()
                     tid=db.execute('INSERT INTO tenants(slug,name,created_at) VALUES(?,?,?)',(slug,name,now)).lastrowid
                     db.execute('INSERT INTO status_items(tenant_id,slug,extension,value,changed_at) VALUES(?,?,?,?,?)',(tid,'spontanschaltung',9001,0,now))
+                    db.execute('UPDATE status_items SET blf_key=1 WHERE tenant_id=? AND slug=?',(tid,'spontanschaltung'))
                     db.execute('INSERT INTO api_keys(tenant_id,token_hash,token_ciphertext) VALUES(?,?,?)',(tid,sha(token),encrypt_api_key(token)))
                     db.commit()
                 except sqlite3.IntegrityError:
@@ -591,7 +711,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.error(503,'Kunde gespeichert, Asterisk Reload fehlgeschlagen. Bitte Logs kontrollieren.');return
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
                 self.output(200,tenant_panel(db,t,session,token,'Kunde angelegt.'));return
-            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|reveal|active|phone|status|set|delete)',path)
+            m=re.fullmatch(r'/admin/tenants/(\d+)/(rotate|reveal|active|phone|status|layout|set|delete)',path)
             if m:
                 tid=int(m.group(1)); action=m.group(2)
                 t=db.execute('SELECT * FROM tenants WHERE id=?',(tid,)).fetchone()
@@ -656,14 +776,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     db.execute('UPDATE tenants SET active=? WHERE id=?',(0 if t['active'] else 1,tid));db.commit()
                     if not reload_asterisk(): self.error(503,'Änderung gespeichert, Asterisk Reload fehlgeschlagen');return
                     self.redirect(f'/admin/tenants/{tid}');return
-                if action=='status':
-                    slug=f.get('slug','').strip().lower(); ext=f.get('extension','')
-                    if not re.fullmatch('[a-z][a-z0-9-]{1,30}',slug) or not ext.isdigit() or not 100 <= int(ext) <= 99999:
-                        self.error(400,'Statusname oder BLF-Nummer ungültig');return
+                if action=='layout':
                     try:
-                        db.execute('INSERT INTO status_items(tenant_id,slug,extension,changed_at) VALUES(?,?,?,?)',(tid,slug,int(ext),int(time.time())));db.commit()
+                        sid = int(f.get('status_id',''))
+                    except (TypeError,ValueError):
+                        self.error(400,'Status-ID fehlt');return
+                    exists = db.execute('SELECT id FROM status_items WHERE id=? AND tenant_id=?', (sid,tid)).fetchone()
+                    if not exists: self.error(404,'Status nicht gefunden');return
+                    try:
+                        label,blf_key,callflow,callflow_key = validate_status_layout(
+                            db,tid,sid,f.get('display_label',''),f.get('blf_key',''),
+                            f.get('callflow',''),f.get('callflow_key',''))
+                    except ValueError as ex:
+                        self.error(400,str(ex));return
+                    db.execute('UPDATE status_items SET display_label=?,blf_key=?,callflow=?,callflow_key=? WHERE id=? AND tenant_id=?',
+                               (label,blf_key,callflow,callflow_key,sid,tid))
+                    db.commit()
+                    self.redirect(f'/admin/tenants/{tid}');return
+                if action=='status':
+                    slug=f.get('slug','').strip().lower()
+                    if not re.fullmatch('[a-z][a-z0-9-]{1,30}',slug):
+                        self.error(400,'Statusname ungültig');return
+                    try:
+                        label,blf_key,callflow,callflow_key = validate_status_layout(
+                            db,tid,-1,f.get('display_label','Status'),f.get('blf_key',''),
+                            f.get('callflow',''),f.get('callflow_key',''))
+                        extension = next_blf_extension(db,tid)
+                        db.execute('INSERT INTO status_items (tenant_id,slug,extension,changed_at,display_label,blf_key,callflow,callflow_key) VALUES(?,?,?,?,?,?,?,?)',
+                                   (tid,slug,extension,int(time.time()),label,blf_key,callflow,callflow_key))
+                        db.commit()
+                    except ValueError as ex:
+                        self.error(400,str(ex));return
                     except sqlite3.IntegrityError:
-                        self.error(409,'Statusname oder BLF-Nummer bereits belegt');return
+                        self.error(409,'Statusname bereits vergeben');return
                     if not reload_asterisk(): self.error(503,'Status gespeichert, Reload fehlgeschlagen');return
                     self.redirect(f'/admin/tenants/{tid}');return
                 if action=='phone':
